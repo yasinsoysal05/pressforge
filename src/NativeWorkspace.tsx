@@ -7,7 +7,7 @@ import {
   ExternalLink, FileText, FolderOpen, GitBranch, Globe2, HardDrive,
   HeartPulse, Layers3, LockKeyhole, Network, Package, Play, Plus,
   RefreshCw, Search, Server, Settings2, ShieldCheck, SlidersHorizontal,
-  Square, TerminalSquare, Wrench, Zap,
+  Square, TerminalSquare, Wrench,
 } from 'lucide-react';
 import type { ModuleInfo } from './StudioModules';
 import './native-shell.css';
@@ -159,8 +159,11 @@ export function NativeWorkspace({
         <span className="ns-mono ns-clamp" title={site.url}>{site.url.replace('http://','')}</span>
         <div className="ns-actions">
           <button type="button" title="Siteyi aç" aria-label={site.title+' sitesini aç'} disabled={!site.running} onClick={()=>onOpen(site,'website')}><ArrowUpRight size={15}/></button>
+          <button type="button" title="WordPress yönetimi" aria-label={site.title+' WP Admin'} disabled={!site.running} onClick={()=>onOpen(site,'admin')}><ExternalLink size={14}/></button>
+          <button type="button" title="Proje klasörü" aria-label={site.title+' klasörü'} onClick={()=>onOpen(site,'folder')}><FolderOpen size={14}/></button>
           <button type="button" title="Site araçları" aria-label={site.title+' araçları'} onClick={()=>onTools(site,'plugin')}><Wrench size={15}/></button>
           <button type="button" title={site.running?'Durdur':'Başlat'} disabled={!!working} onClick={()=>onPower(site)}>{working===site.id?<RefreshCw className="ns-spin" size={15}/>:site.running?<Square size={14}/>:<Play size={15}/>}</button>
+          <button type="button" title="Arşivle" aria-label={site.title+' arşivle'} disabled={!!working} onClick={()=>onArchive(site)}><Archive size={14}/></button>
         </div>
       </div>)}
     </div>;
