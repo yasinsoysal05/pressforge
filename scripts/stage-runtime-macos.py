@@ -9,6 +9,7 @@ This is a build tool; success must be followed by actual Ventura end-to-end test
 """
 from __future__ import annotations
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -40,6 +41,19 @@ def brew_prefix(formula):
         die(f'{formula} Homebrew paketi bulunamadı: {ex}')
 
 
+def runtime_prefix(env_var, formula):
+    # A release build must be able to stage runtimes built from source on
+    # Ventura without relying on an unsupported newer Homebrew bottle.
+    override = os.environ.get(env_var, '').strip()
+    if override:
+        prefix = Path(override).expanduser().resolve(strict=True)
+        if not prefix.is_dir():
+            die(f'{env_var} bir dizin olmalı: {prefix}')
+        print(f'[RUNTIME] {env_var}: {prefix}')
+        return prefix
+    return brew_prefix(formula)
+
+
 def macho(file):
     if file.is_symlink() or not file.is_file():
         return False
@@ -55,12 +69,15 @@ def versions_ok(file):
         die(f'Intel x86_64 olmayan Mach-O: {file} ({info})')
     lines = run('otool', '-l', str(file)).splitlines()
     for i, row in enumerate(lines):
-        if row.strip() == 'cmd LC_BUILD_VERSION':
-            window = lines[i:i+8]
-            for part in window:
-                m = re.search(r'\bminos\s+(\d+\.\d+(?:\.\d+)?)', part)
-                if m and tuple(map(int,m.group(1).split('.'))) > (13,0,0):
-                    die(f'Ventura 13 üzerinde çalışmayacak binary: {file}, minos={m.group(1)}')
+        if row.strip() in ('cmd LC_BUILD_VERSION', 'cmd LC_VERSION_MIN_MACOSX'):
+            key = 'minos' if row.strip() == 'cmd LC_BUILD_VERSION' else 'version'
+            for part in lines[i:i+8]:
+                m = re.search(r'\b'+key+r'\s+(\d+\.\d+(?:\.\d+)?)', part)
+                if m:
+                    version = tuple((list(map(int,m.group(1).split('.'))) + [0,0,0])[:3])
+                    if version > (13,0,0):
+                        die(f'Ventura 13 üzerinde çalışmayacak binary: {file}, minos={m.group(1)}')
+                    break
 
 
 def deps(file):
@@ -131,37 +148,57 @@ def copy_and_fix_symlinks(source, dest):
                 link.unlink()
                 link.symlink_to(os.path.relpath(replacement, link.parent))
             else:
-                # External symlinks are not allowed in a distributable bundle.
+                # Homebrew ships PHP's optional PECL development directory as a
+                # machine-local symlink. It is not part of WordPress core runtime.
+                if dest.name == 'php' and link.relative_to(dest).as_posix() == 'pecl':
+                    print(f'[PHP] PECL geliştirme symlink kaldırıldı: {link} -> {target}')
+                    link.unlink()
+                    continue
+                # All other external symlinks remain a hard packaging failure.
                 die(f'Paket dışında kalan mutlak sembolik bağ: {link} -> {target}')
 
 
 def stage_phar():
-    base='https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/'
-    phar_url=base+'wp-cli.phar'
-    checksum_url=phar_url+'.sha512'
-    print('[WP-CLI] Resmi PHAR ve checksum indiriliyor')
+    # A rotating "latest" download without a pinned digest makes source tags
+    # non-reproducible. Do not replace this check with the remote latest SHA.
+    locked = json.loads((ROOT/'runtime-lock.json').read_text(encoding='utf-8'))['wp_cli']
+    phar_url = locked['source']
+    sha = locked['sha512'].lower()
+    allowed = 'https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar'
+    if phar_url != allowed or len(sha) != 128 or any(c not in '0123456789abcdef' for c in sha):
+        die('WP-CLI runtime-lock.json geçersiz; resmi kaynak ve SHA-512 gerekli')
+    print('[WP-CLI] Sabit SHA-512 ile kontrol edilen PHAR indiriliyor')
     req=urllib.request.Request(phar_url,headers={'User-Agent':'PressForge-packager/0.2'})
     with urllib.request.urlopen(req,timeout=90) as resp: content=resp.read()
-    with urllib.request.urlopen(checksum_url,timeout=30) as resp: sha=resp.read().decode().split()[0]
     digest=hashlib.sha512(content).hexdigest()
-    if digest.lower()!=sha.lower(): die('WP-CLI SHA512 bütünlük kontrolü başarısız')
+    if digest!=sha:
+        die('WP-CLI dosyası kilitlenen SHA-512 ile eşleşmiyor; sürümü bilinçli güncelleyin')
     tools=RUNTIME/'tools'; tools.mkdir(parents=True,exist_ok=True)
     (tools/'wp-cli.phar').write_bytes(content)
-    print(f'[WP-CLI] OK: {len(content):,} bytes, sha512={digest[:16]}...')
+    print(f'[WP-CLI] OK: {len(content):,} bytes, pinned sha512={digest[:16]}...')
 
 
 def main():
     if sys.platform!='darwin' or os.uname().machine!='x86_64':
         die('Bu hazırlama betiği Intel x86_64 macOS üzerinde çalıştırılmalıdır.')
-    if shutil.which('brew') is None: die('macOS build ortamında Homebrew gerekli')
-    php=brew_prefix(os.environ.get('PRESSFORGE_PHP_FORMULA','php@8.3'))
-    maria=brew_prefix(os.environ.get('PRESSFORGE_MARIADB_FORMULA','mariadb@11.4'))
+    if shutil.which('brew') is None and not (
+        os.environ.get('PRESSFORGE_PHP_PREFIX') and os.environ.get('PRESSFORGE_MARIADB_PREFIX')
+    ):
+        die('Homebrew yoksa PRESSFORGE_PHP_PREFIX ve PRESSFORGE_MARIADB_PREFIX gerekli')
+    php=runtime_prefix('PRESSFORGE_PHP_PREFIX', os.environ.get('PRESSFORGE_PHP_FORMULA','php@8.3'))
+    maria=runtime_prefix('PRESSFORGE_MARIADB_PREFIX', os.environ.get('PRESSFORGE_MARIADB_FORMULA','mariadb@11.4'))
     if RUNTIME.exists(): shutil.rmtree(RUNTIME)
     RUNTIME.mkdir(parents=True)
     PORTABLE_LIB.mkdir()
     for label, source in (('php',php),('mariadb',maria)):
         print(f'[{label}] {source} -> {RUNTIME/label}')
         copy_and_fix_symlinks(source, RUNTIME/label)
+    # MariaDB's integration tests are not required by the installed database
+    # daemon. In particular test_pam_modules may target a newer macOS SDK.
+    test_plugins = RUNTIME / 'mariadb/lib/plugin/test_pam_modules'
+    if test_plugins.exists():
+        print(f'[MariaDB] Excluding test-only PAM modules: {test_plugins}')
+        shutil.rmtree(test_plugins)
     stage_phar()
     needed=(RUNTIME/'php/bin/php',RUNTIME/'mariadb/bin/mariadbd',RUNTIME/'mariadb/bin/mariadb')
     for file in needed:
@@ -170,13 +207,29 @@ def main():
     alt=RUNTIME/'mariadb/bin/mariadb-install-db'
     if not scripts.exists() and not alt.exists(): die('mariadb-install-db eksik')
     todo=[p for p in RUNTIME.rglob('*') if macho(p)]
+    incompatible = []
+    for item in todo:
+        try:
+            versions_ok(item)
+        except SystemExit as error:
+            incompatible.append(str(error))
+    if incompatible:
+        for message in incompatible[:40]:
+            print('[UYUMSUZ] ' + message, file=sys.stderr)
+        if len(incompatible) > 40:
+            print(f'[UYUMSUZ] ... {len(incompatible)-40} ek dosya', file=sys.stderr)
+        die(f'{len(incompatible)} Intel Mach-O dosyası Ventura 13 hedefini karşılamıyor; paketlemeyi durdurdum.')
     extra=[]; visited=set(); fixups=0
     while todo:
         file=todo.pop()
         if file in visited: continue
         visited.add(file)
         versions_ok(file)
+        install_id=run('otool','-D',str(file),check=False).splitlines()
+        own_id=install_id[1].strip() if len(install_id)>1 else ''
         for dep in deps(file):
+            # otool -L on a dylib contains its own install-name ID as the first row.
+            if own_id and dep == own_id: continue
             if dep.startswith(SYSDIRS): continue
             resolved=resolve_install_name(dep,file)
             if resolved is None or not resolved.exists(): die(f'{file}: çözümlenemeyen dylib: {dep}')
