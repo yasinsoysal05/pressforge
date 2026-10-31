@@ -163,6 +163,24 @@ export function SiteToolkit({site, close, initialTab='plugin', embedded=false}:{
     }catch(e){setMessage({ok:false,value:String(e)});}
     finally{setBusy('');}
   }
+  async function restore(snapshotId:string){
+    if(site.running){
+      setMessage({ok:false,value:'Geri yüklemeden önce WordPress sitesini durdurun.'});
+      return;
+    }
+    const acknowledge=window.prompt(
+      'UYARI: Bu işlem mevcut WordPress dosyalarını ve veritabanını snapshot ile değiştirecek. '+
+      'Önce güncel kurtarma yedeği alınacak ve hata durumunda geri alma denenecek. Onay için GERI YUKLE yazın.'
+    );
+    if(acknowledge!=='GERI YUKLE')return;
+    setBusy('restore');
+    try {
+      const result=await invoke<string>('restore_site_snapshot',{id:site.id,snapshotId});
+      await fetchSnapshots();
+      setMessage({ok:true,value:result});
+    }catch(e){setMessage({ok:false,value:String(e)});}
+    finally{setBusy('');}
+  }
   async function snapshot(){
     if(site.running){setMessage({ok:false,value:'Önce siteyi durdurun.'});return;}
     setBusy('snapshot');
@@ -240,7 +258,7 @@ export function SiteToolkit({site, close, initialTab='plugin', embedded=false}:{
           </div>
         </>:tab==='snapshot'?<>
           <p className="pf-toolkit-description">WordPress dosyaları ve SQL yedeği birlikte kaydedilir.
-          Geri yükleme henüz uygulanmadı. Eksik SQL yedeğiyle snapshot başarılı sayılmaz.</p>
+          Geri yükleme mevcut site dosyalarını ve SQL'i değiştirir; önce kurtarma yedeği alınır. Site durdurulmuş olmalıdır.</p>
           <button className="primary-btn" disabled={!!busy||site.running} onClick={snapshot}>
             {busy==='snapshot'?<Loader2 className="spin" size={16}/>:<HardDriveDownload size={16}/>}
             Tam snapshot oluştur</button>
@@ -253,7 +271,10 @@ export function SiteToolkit({site, close, initialTab='plugin', embedded=false}:{
           <div className="pf-snapshots">{snapshots.length?snapshots.slice(listPage*limit,(listPage+1)*limit).map(s=><div className="pf-snapshot" key={s.id}>
             <Archive size={18}/><div><strong>{new Date(s.createdAt*1000).toLocaleString('tr-TR')}</strong>
             <small>{s.id.slice(0,8)} · {(s.sizeBytes/1048576).toFixed(1)} MB · SQL dahil</small></div>
-            <CheckCircle2 size={18}/></div>):<p>Henüz snapshot yok.</p>}</div>
+            <button type="button" className="outline-btn pf-restore-snapshot" disabled={!!busy||site.running}
+              title={site.running?'Geri yüklemeden önce siteyi durdurun':'Bu snapshot üzerinden geri yükle'}
+              onClick={()=>void restore(s.id)}><RefreshCw size={14}/> Geri Yükle</button>
+            </div>):<p>Henüz snapshot yok.</p>}</div>
           {pager(snapshots.length,listPage,setListPage)}
         </>:<>
           <p className="pf-toolkit-description">Keyfî terminal komutları çalıştırılmaz; yalnızca üç izinli bakım işlemi desteklenir.</p>
