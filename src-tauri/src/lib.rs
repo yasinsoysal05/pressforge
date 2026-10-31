@@ -419,19 +419,18 @@ fn check_dependencies(app: AppHandle) -> Vec<Dependency> {
         let found = if *name == "WP-CLI" {
             bundle_runtime(&app).map(|r| r.join("tools/wp-cli.phar")).or_else(|| find_binary(names))
         } else { bundled_binary(&app, names).or_else(|| find_binary(names)) };
-        let version = found.as_ref()
-            .and_then(|b| {
-                if *name == "WP-CLI" && bundle_runtime(&app).is_some() {
-                    wp(&app, &flags.iter().map(|s| s.to_string()).collect::<Vec<_>>(), None).ok()
-                } else {
-                    run_app_capture(&app, b, &flags.iter().map(|s| s.to_string()).collect::<Vec<_>>(), None).ok()
-                }
-            })
-            .unwrap_or_default()
-            .lines().next().unwrap_or("").to_string();
+        let probe = found.as_ref().and_then(|b| {
+            if *name == "WP-CLI" && bundle_runtime(&app).is_some() {
+                wp(&app, &flags.iter().map(|s| s.to_string()).collect::<Vec<_>>(), None).ok()
+            } else {
+                run_app_capture(&app, b, &flags.iter().map(|s| s.to_string()).collect::<Vec<_>>(), None).ok()
+            }
+        });
+        let installed = probe.is_some();
+        let version = probe.unwrap_or_default().lines().next().unwrap_or("").to_string();
         Dependency {
             name: name.to_string(),
-            installed: found.is_some(),
+            installed,
             version,
             path: found.map(|p| p.display().to_string()).unwrap_or_default(),
         }
