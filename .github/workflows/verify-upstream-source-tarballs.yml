@@ -41,6 +41,8 @@ jobs:
                   print('Example symlinks:', symlinks[:8])
                   print('Example hardlinks:', hardlinks[:8])
           PY
+      - name: Safely extract the actual verified PHP/MariaDB archives
+        run: python3 scripts/build-runtime-from-source.py --extract-only
       - name: Confirm no installation was performed
         run: |
           test -f .pressforge-build/ventura/downloads/php-8.3.35.tar.xz
