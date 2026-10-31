@@ -124,6 +124,8 @@ pub fn list_studio_modules(app: AppHandle) -> Result<Vec<StudioModule>, String> 
             "Site dosyaları + SQL dump içeren yerel snapshot", String::new()),
         mod_entry("logs", "PHP Logs", "site", true, true,
             "Siteye özel hata logu görüntüleme", String::new()),
+        mod_entry("database", "Database Inspector", "site", php && wpcli && db, true,
+            "Veritabanı tabloları ve kolon şeması (salt-okunur)", String::new()),
         mod_entry("ssl", "Local HTTPS / SSL", "network", false, false,
             "Özel domain için güvenilir geliştirme sertifikası", String::new()),
         mod_entry("domains", "Custom Domains", "network", false, false,
@@ -269,6 +271,74 @@ pub async fn run_site_maintenance(
     }).await.map_err(|e| e.to_string())?
 }
 
+fn parse_database_tables(input: &str) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    for row in input.lines() {
+        let table = row.trim();
+        if table.is_empty() { continue; }
+        if table.len() > 200 ||
+            !table.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        {
+            return Err("WP-CLI geçersiz veritabanı tablo adı döndürdü".into());
+        }
+        if !out.iter().any(|v| v == table) { out.push(table.to_string()); }
+        if out.len() > 1500 {
+            return Err("Veritabanı tablo sınırı aşıldı".into());
+        }
+    }
+    Ok(out)
+}
+
+fn database_tables_for_site(app: &AppHandle, public: &Path) -> Result<Vec<String>, String> {
+    // WP-CLI reads wp-config.php and uses the site's own database credentials.
+    // No arbitrary SQL, interactive mysql shell or user-supplied CLI flags.
+    let output = super::wp(app, &[
+        "db".into(), "tables".into(), "--format=list".into(),
+        "--all-tables-with-prefix".into(), "--skip-plugins".into(),
+        "--skip-themes".into(), "--skip-packages".into(),
+        "--quiet".into(), format!("--path={}", public.display()),
+    ], None)?;
+    parse_database_tables(&output)
+}
+
+#[tauri::command]
+pub async fn list_site_database_tables(app: AppHandle, id: String) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let _lock = state.operations.lock().map_err(|e| e.to_string())?;
+        super::ensure_database(&app, &state)?;
+        let (_, public) = validated_site(&app, &id)?;
+        database_tables_for_site(&app, &public)
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn inspect_site_database_table(
+    app: AppHandle, id: String, table: String,
+) -> Result<Vec<Value>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let _lock = state.operations.lock().map_err(|e| e.to_string())?;
+        super::ensure_database(&app, &state)?;
+        let (_, public) = validated_site(&app, &id)?;
+        let tables = database_tables_for_site(&app, &public)?;
+        if !tables.contains(&table) {
+            return Err("Tablo bu WordPress sitesinin veritabanına ait değil".into());
+        }
+        let output = super::wp(&app, &[
+            "db".into(), "columns".into(), table,
+            "--format=json".into(), "--skip-plugins".into(),
+            "--skip-themes".into(), "--skip-packages".into(),
+            "--quiet".into(), format!("--path={}", public.display()),
+        ], None)?;
+        let parsed: Value = serde_json::from_str(&output)
+            .map_err(|_| "Veritabanı kolon bilgisi geçersiz JSON döndürdü")?;
+        let rows = parsed.as_array().ok_or("Kolon yanıtı beklenen diziyi içermiyor")?;
+        if rows.len() > 500 { return Err("Kolon sayısı güvenlik sınırını aştı".into()); }
+        Ok(rows.clone())
+    }).await.map_err(|e| e.to_string())?
+}
+
 fn copy_regular_tree(from: &Path, to: &Path, level: usize) -> Result<u64, String> {
     if level > 64 { return Err("Snapshot klasör derinliği sınırı aşıldı".into()); }
     if !from.is_dir() || from.is_symlink() { return Err("Güvenli olmayan kaynak klasör".into()); }
@@ -393,6 +463,14 @@ pub fn open_site_snapshots_folder(app: AppHandle, id: String) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn table_names_must_be_safe_and_bounded() {
+        assert_eq!(parse_database_tables("wp_posts\\nwp_options\\nwp_posts\\n").unwrap(),
+            vec!["wp_posts".to_string(), "wp_options".to_string()]);
+        for unsafe_input in ["wp_posts; DROP TABLE users", "wp_a/../../", "wp_foo\\u{0}bar"] {
+            assert!(parse_database_tables(unsafe_input).is_err());
+        }
+    }
     #[test]
     fn restricts_wp_extension_slugs() {
         for safe in ["akismet", "hello-dolly", "elementor/elementor", "twentytwentyfive"] {
