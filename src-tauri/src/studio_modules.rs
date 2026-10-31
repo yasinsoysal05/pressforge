@@ -310,6 +310,22 @@ pub fn list_site_snapshots(app: AppHandle, id: String) -> Result<Vec<SiteSnapsho
     Ok(snapshots)
 }
 
+#[tauri::command]
+pub fn open_site_snapshots_folder(app: AppHandle, id: String) -> Result<(), String> {
+    let (_site, _public) = validated_site(&app, &id)?;
+    let folder = snapshots_root(&app, &id)?;
+    super::ensure_private_directory(&folder)?;
+    if !cfg!(target_os = "macos") {
+        return Err("Snapshot klasörü açma işlemi yalnızca macOS ile desteklenir".into());
+    }
+    let status = Command::new("/usr/bin/open")
+        .arg(&folder).status().map_err(|e| e.to_string())?;
+    if !status.success() {
+        return Err("Snapshot klasörü Finder içinde açılamadı".into());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
