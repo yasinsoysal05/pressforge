@@ -1,0 +1,30 @@
+name: Portable runtime script syntax
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate-scripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile runtime Python scripts
+        run: |
+          python3 -m py_compile scripts/stage-runtime-macos.py
+          python3 -m py_compile scripts/verify-bundled-runtime.py
+          python3 -m py_compile scripts/audit-runtime-macos.py
+          python3 -m py_compile scripts/smoke-mariadb-macos.py
+      - name: Check bash build entrypoints
+        run: |
+          bash -n scripts/build-intel-dmg.sh
+          bash -n scripts/verify-runtime-on-ventura.sh
