@@ -495,6 +495,20 @@ fn check_dependencies(app: AppHandle) -> Vec<Dependency> {
     } else {
         results.push(Dependency { name: "PHP mysqli".into(), installed: false, version: String::new(), path: String::new() });
     }
+    if bundle_runtime(&app).is_some() {
+        // The client CLI may be installed even when the actual server binary is
+        // absent. Do not let the UI claim "ready" or offer site creation then.
+        let daemon = bundled_binary(&app, &["mariadbd"]);
+        let probe = daemon.as_ref().and_then(|exe| {
+            run_app_capture(&app, exe, &["--version".into()], None).ok()
+        });
+        results.push(Dependency {
+            name: "MariaDB server".into(),
+            installed: probe.is_some(),
+            version: probe.unwrap_or_default().lines().next().unwrap_or("").to_string(),
+            path: daemon.map(|p| p.display().to_string()).unwrap_or_default(),
+        });
+    }
     results
 }
 
@@ -509,7 +523,13 @@ fn create_site_impl(app: &AppHandle, state: &AppState, new: NewSite) -> Result<S
     let _ = app_binary(app, &["php"])?;
     if bundle_runtime(app).is_none() { let _ = binary(&["wp"])?; }
     let _ = app_binary(app, &["mariadb", "mysql"])?;
-    mysql_exec(app, state, &new, "SELECT 1;\n").map_err(|e| format!("MariaDB bağlantısı başarısız. 'brew services start mariadb' komutunu ve yönetici bilgilerini kontrol edin. {e}"))?;
+    mysql_exec(app, state, &new, "SELECT 1;\n").map_err(|e| {
+        if bundle_runtime(app).is_some() {
+            format!("Paketlenmiş MariaDB sunucusu veya socket bağlantısı başarısız: {e}")
+        } else {
+            format!("Yerel MariaDB bağlantısı başarısız. Sunucu servisinin çalıştığını ve kullanıcı bilgilerini kontrol edin. {e}")
+        }
+    })?;
 
     let mut existing = load_sites(app)?;
     let port = choose_port(&existing)?;
