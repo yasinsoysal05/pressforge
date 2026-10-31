@@ -188,3 +188,15 @@ button,input,select{font-family:inherit}
 .ns-outer .pf-db-tables button{padding:5px 7px}
 .ns-outer .pf-db-column{padding:5px 0}
 @media(max-width:1100px){.ns-actions button{width:24px;height:25px}.ns-table-head,.ns-site-row{grid-template-columns:minmax(115px,1.45fr) 75px minmax(82px,1fr) 171px;gap:5px}}
+
+.ns-wizard-steps{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:13px 19px 0}
+.ns-wizard-steps span{background:#222a3b;color:#8e99af;border:1px solid #38435a;border-radius:7px;padding:9px 12px;font-size:11px;font-weight:700}
+.ns-wizard-steps span.selected{background:#302b4e;color:#d7d0ff;border-color:#7064aa}
+.ns-outer .modal .form-body{flex:1;align-content:start;gap:11px}
+.ns-outer .modal .form-body label{gap:6px}
+.ns-outer .modal .form-body input,.ns-outer .modal .form-body select{height:39px}
+.ns-outer .modal .form-divider{padding-top:9px}
+.ns-log-pager{display:flex;justify-content:center;align-items:center;gap:9px;padding:3px 19px 8px;color:#98a4ba;font-size:10px}
+.ns-log-pager span{margin-right:auto}
+.ns-log-pager button{background:#2b3449;color:#e0def2;border:1px solid #414c65;border-radius:7px;font-size:10px;padding:7px 11px}
+.ns-log-pager button:disabled{opacity:.45}
