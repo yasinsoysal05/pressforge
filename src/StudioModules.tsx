@@ -86,9 +86,12 @@ export function ModuleCenter({modules, refresh}: {
 }
 
 export function SiteToolkit({site, close}:{site:ToolkitSite;close:()=>void}) {
-  const [tab,setTab]=useState<'plugin'|'theme'|'snapshot'|'maintenance'>('plugin');
+  const [tab,setTab]=useState<'plugin'|'theme'|'database'|'snapshot'|'maintenance'>('plugin');
   const [extensions,setExtensions]=useState<ExtensionInfo[]>([]);
   const [snapshots,setSnapshots]=useState<SnapshotInfo[]>([]);
+  const [tables,setTables]=useState<string[]>([]);
+  const [selectedTable,setSelectedTable]=useState('');
+  const [columns,setColumns]=useState<Record<string,unknown>[]>([]);
   const [busy,setBusy]=useState('');
   const [message,setMessage]=useState<{ok:boolean;value:string}|null>(null);
 
@@ -104,10 +107,31 @@ export function SiteToolkit({site, close}:{site:ToolkitSite;close:()=>void}) {
     catch(e){setMessage({ok:false,value:String(e)});}
     finally{setBusy('');}
   },[site.id]);
+  const fetchDatabase=useCallback(async()=>{
+    setBusy('db');
+    setSelectedTable('');
+    setColumns([]);
+    try {
+      setTables(await invoke<string[]>('list_site_database_tables',{id:site.id}));
+      setMessage(null);
+    } catch(e) {setMessage({ok:false,value:String(e)});}
+    finally {setBusy('');}
+  },[site.id]);
+  const inspectTable=useCallback(async(table:string)=>{
+    setBusy('schema');
+    setSelectedTable(table);
+    setColumns([]);
+    try {
+      setColumns(await invoke<Record<string,unknown>[]>('inspect_site_database_table',{id:site.id,table}));
+      setMessage(null);
+    } catch(e) {setMessage({ok:false,value:String(e)});}
+    finally {setBusy('');}
+  },[site.id]);
   useEffect(()=>{
     if(tab==='plugin'||tab==='theme') void fetchExtensions(tab);
     if(tab==='snapshot') void fetchSnapshots();
-  },[tab,fetchExtensions,fetchSnapshots]);
+    if(tab==='database') void fetchDatabase();
+  },[tab,fetchExtensions,fetchSnapshots,fetchDatabase]);
 
   async function manage(kind:'plugin'|'theme',slug:string,action:'activate'|'deactivate'){
     if(!window.confirm(slug+' için '+action+' işlemini onaylıyor musunuz?'))return;
@@ -147,13 +171,13 @@ export function SiteToolkit({site, close}:{site:ToolkitSite;close:()=>void}) {
       </div>
       <div className="pf-toolkit-tabs" role="tablist" aria-label="Site araçları">
         {([['plugin','Eklentiler',Package],['theme','Temalar',Layers3],
-           ['snapshot','Snapshot',FileArchive],['maintenance','Bakım',Wrench]] as const)
+           ['database','Veritabanı',Database],['snapshot','Snapshot',FileArchive],['maintenance','Bakım',Wrench]] as const)
           .map(([key,label,Icon])=><button key={key} role="tab" aria-selected={tab===key}
             className={tab===key?'active':''} disabled={!!busy} onClick={()=>setTab(key)}>
             <Icon size={16}/>{label}</button>)}
       </div>
       <div className="pf-toolkit-content">
-        {busy==='list'?<div className="pf-toolkit-loading"><Loader2 className="spin"/> Yükleniyor…</div>
+        {['list','db','schema'].includes(busy)?<div className="pf-toolkit-loading"><Loader2 className="spin"/> Yükleniyor…</div>
         : tab==='plugin'||tab==='theme' ? <>
           <p className="pf-toolkit-description">WordPress eklenti ve temaları WP-CLI ile yönetilir. Sadece etkinleştirme ve devre dışı bırakma komutları kullanılabilir.</p>
           {extensions.length?<div className="pf-extension-list">{extensions.map(ext=><div className="pf-extension" key={ext.name}>
@@ -162,6 +186,33 @@ export function SiteToolkit({site, close}:{site:ToolkitSite;close:()=>void}) {
               ext.status==='active'?'deactivate':'activate')}>
               {ext.status==='active'?'Devre dışı':'Etkinleştir'}</button>
           </div>)}</div>:<div className="pf-toolkit-empty">Henüz kayıt yok.</div>}
+        </>:tab==='database'?<>
+          <p className="pf-toolkit-description">
+            WordPress veritabanındaki tabloları ve kolonlarını salt-okunur görüntüleyin.
+            Serbest SQL ve veri değiştiren işlemler bu araçta çalıştırılmaz.
+          </p>
+          <button className="outline-btn" disabled={!!busy} onClick={()=>void fetchDatabase()}>
+            <RefreshCw size={15}/> Tabloları yenile
+          </button>
+          <div className="pf-db-inspector">
+            <div className="pf-db-tables">
+              <strong>{tables.length} tablo</strong>
+              {tables.map(table=><button key={table} type="button"
+                className={selectedTable===table?'selected':''} disabled={!!busy}
+                onClick={()=>void inspectTable(table)}>{table}</button>)}
+              {!tables.length&&<small>Bu site için tablo bulunamadı.</small>}
+            </div>
+            <div className="pf-db-schema">
+              <strong>{selectedTable||'Kolon şeması'}</strong>
+              {columns.length?<div className="pf-db-columns">
+                {columns.map((col,i)=><div key={i} className="pf-db-column">
+                  <code>{String(col.Field??col.field??'—')}</code>
+                  <small>{String(col.Type??col.type??'')}</small>
+                  <small>{String(col.Key??col.key??'')}</small>
+                </div>)}
+              </div>:<p>Şemasını incelemek için soldan bir tablo seçin.</p>}
+            </div>
+          </div>
         </>:tab==='snapshot'?<>
           <p className="pf-toolkit-description">WordPress dosyaları ve SQL yedeği birlikte kaydedilir.
           Geri yükleme henüz uygulanmadı. Eksik SQL yedeğiyle snapshot başarılı sayılmaz.</p>
