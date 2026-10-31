@@ -35,7 +35,7 @@ def is_macho(file: Path) -> bool:
 
 
 def versions(file: Path) -> list[tuple[int, int, int]]:
-    text = run("otool", "-l", str(file)).splitlines()
+    text = run("otool", "-arch", "x86_64", "-l", str(file)).splitlines()
     result = []
     for i, line in enumerate(text):
         if line.strip() == "cmd LC_BUILD_VERSION":
@@ -71,16 +71,22 @@ def check() -> None:
             continue
         count += 1
         ftype = run("file", "-b", str(item))
-        if "x86_64" not in ftype and "universal" not in ftype.lower():
-            errors.append(f"Not Intel binary: {item}: {ftype}")
+        # "universal" in file(1) is not evidence of an x86_64 slice.
+        slice_check = subprocess.run(
+            ["lipo", "-verify_arch", "x86_64", str(item)],
+            capture_output=True, check=False,
+        )
+        if slice_check.returncode != 0:
+            errors.append(f"Missing Intel x86_64 slice: {item}: {ftype}")
+            continue
         minimum = versions(item)
         if not minimum:
             errors.append(f"No macOS minimum load command: {item}")
         elif max(minimum) > MIN_TARGET:
             errors.append(f"Requires macOS >13: {item} ({minimum})")
-        dylib_id = run("otool", "-D", str(item)).splitlines()
+        dylib_id = run("otool", "-arch", "x86_64", "-D", str(item)).splitlines()
         self_id = dylib_id[1].strip() if len(dylib_id)>1 else ""
-        deps = run("otool", "-L", str(item)).splitlines()[1:]
+        deps = run("otool", "-arch", "x86_64", "-L", str(item)).splitlines()[1:]
         for entry in deps:
             dep = entry.strip().split(" (", 1)[0]
             if not dep or dep == self_id:
