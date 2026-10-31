@@ -151,6 +151,11 @@ export function SiteToolkit({site, close}:{site:ToolkitSite;close:()=>void}) {
             {busy==='snapshot'?<Loader2 className="spin" size={16}/>:<HardDriveDownload size={16}/>}
             Tam snapshot oluştur</button>
           {site.running&&<p className="pf-toolkit-warning"><ShieldAlert size={16}/> Önce siteyi durdurun.</p>}
+          <button className="outline-btn pf-open-snapshots" disabled={!!busy}
+            onClick={() => invoke('open_site_snapshots_folder',{id:site.id})
+              .catch(e=>setMessage({ok:false,value:String(e)}))}>
+            <Archive size={16}/> Snapshot klasörünü Finder'da aç
+          </button>
           <div className="pf-snapshots">{snapshots.length?snapshots.map(s=><div className="pf-snapshot" key={s.id}>
             <Archive size={18}/><div><strong>{new Date(s.createdAt*1000).toLocaleString('tr-TR')}</strong>
             <small>{s.id.slice(0,8)} · {(s.sizeBytes/1048576).toFixed(1)} MB · SQL dahil</small></div>
