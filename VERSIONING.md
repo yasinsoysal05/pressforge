@@ -18,7 +18,7 @@ Değiştirilecekler:
 ```bash
 python3 scripts/check-version.py
 python3 scripts/verify-project.py
-npm install
+npm ci
 npm run build
 ```
 
@@ -32,3 +32,7 @@ npm run build
 6. Yeni sürümü doğrula: tag, kaynak kod ve release notları eşleşsin.
 
 > v0.2.0 bir **prerelease/alpha source preview** olarak işaretlenmelidir.
+
+## Tekrarlanabilir derleme (CI)
+
+`package-lock.json` ve `src-tauri/Cargo.lock` git içinde tutulur. Normal CI ve DMG derlemesi `npm ci` ve `cargo --locked` kullanır. Lock dosyaları güncellenmesi ayrı bir PR kapsamında yapılmalıdır.
