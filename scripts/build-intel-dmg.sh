@@ -44,5 +44,15 @@ npm run tauri build -- --target x86_64-apple-darwin
 python3 scripts/check-native-macos-app.py
 python3 scripts/verify-app-bundle-macos.py
 
-find src-tauri/target/x86_64-apple-darwin/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print
-printf '\n[UYARI] Bu DMG kod imzalama/notarization olmadan kamu dağıtımı için hazır değildir.\n'
+# Validate the actual DMG image, not only the pre-packaging .app.
+dmg_dir="src-tauri/target/x86_64-apple-darwin/release/bundle/dmg"
+shopt -s nullglob
+dmgs=("$dmg_dir"/*.dmg)
+shopt -u nullglob
+if [[ "${#dmgs[@]}" -ne 1 ]]; then
+  echo "[FAIL] Exactly one DMG is required, found ${#dmgs[@]}" >&2
+  exit 1
+fi
+bash scripts/verify-final-dmg-macos.sh "${dmgs[0]}"
+printf '[OK] Development DMG verified: %s\n' "${dmgs[0]}"
+printf '\n[UYARI] Bu DMG kod imzalama/notarization ve temiz Ventura testi olmadan kamu dağıtımı için hazır değildir.\n'
