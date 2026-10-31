@@ -26,6 +26,8 @@ jobs:
         run: bash -n scripts/doctor-ventura-build-host.sh
       - name: Source SHA-256 lock schema
         run: python3 scripts/build-runtime-from-source.py --verify-lock
+      - name: Source archive extraction security regression tests
+        run: python3 -m unittest discover -s tests -p 'test_source_archive.py' -v
       - name: No source build outputs tracked by Git
         run: |
           if git ls-files | grep -E '(^|/)\.pressforge-build/|/dist/(mariadb|php)/'; then
