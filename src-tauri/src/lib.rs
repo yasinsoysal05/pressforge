@@ -840,6 +840,8 @@ pub fn run() {
             studio_modules::create_site_snapshot,
             studio_modules::list_site_snapshots,
             studio_modules::open_site_snapshots_folder,
+            studio_modules::list_site_database_tables,
+            studio_modules::inspect_site_database_table,
         ])
         .build(tauri::generate_context!())
         .expect("PressForge başlatılamadı");
