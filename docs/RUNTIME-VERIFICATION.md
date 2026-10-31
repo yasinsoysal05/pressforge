@@ -34,3 +34,17 @@ The [experimental runtime workflow](../.github/workflows/validate-portable-runti
 ## WP-CLI supply-chain lock
 
 `runtime-lock.json` now records the expected SHA-512 of the official WP-CLI PHAR. Builds verify the downloaded bytes against that **versioned local digest** rather than trusting a mutable checksum served from the same remote location. When upstream replaces `wp-cli.phar`, the build fails until a reviewed lockfile update is merged. This is an integrity and reproducibility guard, not a substitute for independent provenance verification and signature checks.
+
+## Disposable WordPress end-to-end acceptance probe
+
+On **real Intel macOS Ventura 13.x**, after staging a genuinely compatible PHP/MariaDB runtime, run:
+
+```bash
+python3 scripts/smoke-wordpress-macos.py
+```
+
+This generates a temporary data directory, initializes a local socket-only MariaDB instance, creates an isolated database/user, downloads WordPress through the bundled WP-CLI, sets the database connection using `--prompt=dbpass`, installs WP with `--prompt=admin_password`, then serves and checks the homepage and login page on `127.0.0.1`. It stops child processes and deletes the temporary test site on completion. Requires network access for WP core download. Do not run with live customer data. No generated password is logged.
+
+`scripts/verify-runtime-on-ventura.sh` invokes this test by default. `PRESSFORGE_SKIP_WORDPRESS_E2E=1` is available only for developer diagnostics, **not** for release acceptance.
+
+A separate Ubuntu CI test exercises the same WP-CLI command options against an ephemeral MariaDB + PHP installation. Passing Ubuntu CI verifies CLI syntax/flow only; it is **not** proof of binary compatibility on macOS Ventura.
