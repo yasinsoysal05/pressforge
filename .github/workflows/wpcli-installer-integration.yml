@@ -2,7 +2,7 @@ name: WordPress installer integration checks (Ubuntu)
 
 on:
   pull_request:
-    branches: [main, feat/portable-runtime-validation]
+    branches: [main, feat/portable-runtime-validation, feat/ventura-source-build]
   workflow_dispatch:
 
 concurrency:
@@ -72,6 +72,24 @@ jobs:
           installed_url="$(printf '%s' "$installed_url" | sed 's:/*$::')"
           echo "[CHECK] Installed site URL: $installed_url"
           test "$installed_url" = 'http://127.0.0.1:18117'
+          # Exercise the same allowlisted WP-CLI functions used by the modular UI.
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" plugin list --format=json --quiet >"$tmp/plugins.json"
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" theme list --format=json --quiet >"$tmp/themes.json"
+          python3 - "$tmp" <<'PY'
+          import json, pathlib, sys
+          root=pathlib.Path(sys.argv[1])
+          for filename in ("plugins.json", "themes.json"):
+              data=json.loads((root/filename).read_text())
+              assert isinstance(data,list), filename
+              assert all(isinstance(item.get("name"),str) for item in data), filename
+          print("[OK] WP-CLI JSON plugin/theme lists")
+          PY
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" cache flush --quiet
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" rewrite flush --quiet
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" core verify-checksums --quiet
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" db export "$tmp/snapshot-test.sql" --quiet
+          test -s "$tmp/snapshot-test.sql"
+          echo '[OK] Site cache, rewrite, core verification and SQL-backed snapshot export'
           php -S 127.0.0.1:18117 -t "$tmp" src-tauri/src/router.php >"$tmp/php.log" 2>&1 &
           server_pid="$!"
           for attempt in $(seq 1 30); do
