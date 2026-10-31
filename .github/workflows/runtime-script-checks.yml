@@ -24,6 +24,7 @@ jobs:
           python3 -m py_compile scripts/verify-bundled-runtime.py
           python3 -m py_compile scripts/audit-runtime-macos.py
           python3 -m py_compile scripts/smoke-mariadb-macos.py
+          python3 -m py_compile scripts/smoke-wordpress-macos.py
       - name: Check bash build entrypoints
         run: |
           bash -n scripts/build-intel-dmg.sh
