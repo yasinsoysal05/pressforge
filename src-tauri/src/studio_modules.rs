@@ -364,6 +364,24 @@ fn copy_regular_tree(from: &Path, to: &Path, level: usize) -> Result<u64, String
     Ok(bytes)
 }
 
+fn keep_current_db_connection(current: &Path, staged: &Path) -> Result<(), String> {
+    let config = current.join("wp-config.php");
+    let staged_config = staged.join("wp-config.php");
+    for path in [&config, &staged_config] {
+        let meta = fs::symlink_metadata(path)
+            .map_err(|_| "WordPress veritabanı yapılandırması bulunamadı".to_string())?;
+        if !meta.is_file() || meta.file_type().is_symlink() {
+            return Err("WordPress veritabanı yapılandırması güvenli değil".into());
+        }
+    }
+    // The snapshot's historic wp-config.php could contain stale, external or
+    // privileged DB credentials. Retain THIS site's live connection details.
+    // This also allows DB password rotation after the snapshot was created.
+    fs::copy(config, staged_config)
+        .map_err(|e| format!("Geçerli wp-config.php korunamadı: {e}"))?;
+    Ok(())
+}
+
 fn checked_snapshot_id(value: &str) -> Result<(), String> {
     if value.len() != 32 || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err("Geçersiz snapshot kimliği".into());
@@ -493,9 +511,9 @@ pub async fn restore_site_snapshot(
         // staged and we have a non-empty dump of the CURRENT database.
         let preflight = (|| -> Result<(), String> {
             copy_regular_tree(&source.join("files"), &stage, 0)?;
-            if !stage.join("wp-config.php").is_file() {
-                return Err("Snapshot WordPress yapılandırması eksik".into());
-            }
+            // Import must target the currently configured local site database;
+            // never adopt stale credentials or a remote DB_HOST from a snapshot.
+            keep_current_db_connection(&public, &stage)?;
             super::wp(&app, &[
                 "db".into(), "export".into(), backup_sql.display().to_string(),
                 "--quiet".into(), format!("--path={}", public.display()),
@@ -624,6 +642,19 @@ mod tests {
         for unsafe_input in ["wp_posts; DROP TABLE users", "wp_a/../../", "wp_foo\u{0}bar"] {
             assert!(parse_database_tables(unsafe_input).is_err());
         }
+    }
+    #[test]
+    fn restore_retains_current_wordpress_db_connection() {
+        let root = tempfile::tempdir().unwrap();
+        let current = root.path().join("site");
+        let staged = root.path().join("staged");
+        fs::create_dir_all(&current).unwrap();
+        fs::create_dir_all(&staged).unwrap();
+        fs::write(current.join("wp-config.php"), "define('DB_HOST','localhost');").unwrap();
+        fs::write(staged.join("wp-config.php"), "define('DB_HOST','danger.invalid');").unwrap();
+        keep_current_db_connection(&current, &staged).unwrap();
+        assert_eq!(fs::read(staged.join("wp-config.php")).unwrap(),
+            fs::read(current.join("wp-config.php")).unwrap());
     }
     #[test]
     fn validate_snapshot_id_and_manifest_before_restore() {
