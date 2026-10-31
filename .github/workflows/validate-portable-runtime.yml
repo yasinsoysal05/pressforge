@@ -1,0 +1,43 @@
+name: Validate portable PHP MariaDB Intel macOS (experimental)
+
+# Manual diagnostic only: hosted macos-15-intel bottles are known to require
+# macOS 14+, so they cannot produce a Ventura 13-compatible runtime.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pressforge-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable-runtime:
+    name: Staged PHP / WP-CLI / MariaDB on Intel macOS 15
+    runs-on: macos-15-intel
+    timeout-minutes: 80
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report Intel runner
+        run: |
+          uname -m
+          sw_vers
+          brew --version
+      - name: Install PHP and MariaDB into build host
+        run: |
+          brew install php@8.3 mariadb@11.4
+      - name: Copy and relocate runtime into application resource tree
+        run: python3 scripts/stage-runtime-macos.py
+      - name: Run runtime executable and extension checks
+        run: python3 scripts/verify-bundled-runtime.py
+      - name: Audit every Mach-O binary, symlink and dylib linkage
+        run: python3 scripts/audit-runtime-macos.py
+      - name: Smoke-test isolated MariaDB bootstrap and local socket SQL
+        run: python3 scripts/smoke-mariadb-macos.py
+      - name: Runtime validation result
+        run: |
+          echo 'Intel macOS 15 runtime checks passed.'
+          echo 'This is NOT a macOS Ventura 13 installation acceptance test.'

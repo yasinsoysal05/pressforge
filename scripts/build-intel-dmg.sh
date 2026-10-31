@@ -22,6 +22,8 @@ fi
 
 # Avoid a misleading DMG with an incomplete runtime.
 python3 scripts/verify-bundled-runtime.py
+python3 scripts/audit-runtime-macos.py
+python3 scripts/smoke-mariadb-macos.py
 npm ci --no-audit --no-fund
 export MACOSX_DEPLOYMENT_TARGET=13.0
 npm run tauri build -- --target x86_64-apple-darwin
