@@ -43,6 +43,7 @@ const nav:NavGroup[] = [
     {id:'snapshots',label:'Yedekler',Icon:Archive,module:'snapshots'},
     {id:'logs',label:'PHP Logları',Icon:FileText,module:'logs'},
     {id:'maintenance',label:'Bakım',Icon:Wrench,module:'wpcli'},
+    {id:'health',label:'Yerel Sağlık',Icon:HeartPulse,module:'local_diagnostics'},
     {id:'clone_import',label:'Klonla / İçe Aktar',Icon:HardDrive,module:'clone_import'},
   ]},
   {id:'connect',title:'Ağ & Entegrasyon',Icon:Network,items:[
@@ -87,6 +88,51 @@ function Paginator({index,count,limit=6,onChange}:{index:number;count:number;lim
     <button type="button" aria-label="Önceki sayfa" disabled={index===0} onClick={()=>onChange(Math.max(0,index-1))}><ChevronLeft size={16}/></button>
     <span>{index+1} / {pages}</span>
     <button type="button" aria-label="Sonraki sayfa" disabled={index>=pages-1} onClick={()=>onChange(Math.min(pages-1,index+1))}><ChevronRight size={16}/></button>
+  </div>;
+}
+
+type LocalDiagnostics = {
+  wordpressVersion:string;siteUrl:string;expectedUrl:string;phpVersion:string;
+  phpMysqli:boolean;pluginCount:number;themeCount:number;tableCount:number;
+  checksPassed:boolean;warnings:string[];
+};
+function EmbeddedDiagnostics({site}:{site:SiteRecord}){
+  const [report,setReport]=useState<LocalDiagnostics|null>(null);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  async function run(){
+    setBusy(true);setError('');
+    try {setReport(await invoke<LocalDiagnostics>('diagnose_site_locally',{id:site.id}));}
+    catch(e){setError(String(e));setReport(null);}
+    finally{setBusy(false);}
+  }
+  useEffect(()=>{setReport(null);setError('');},[site.id]);
+  const facts=report?[
+    ['WordPress',report.wordpressVersion],
+    ['PHP',report.phpVersion||'Eksik'],
+    ['PHP mysqli',report.phpMysqli?'Hazır':'Eksik'],
+    ['Eklentiler',String(report.pluginCount)],
+    ['Temalar',String(report.themeCount)],
+    ['Veritabanı tabloları',String(report.tableCount)]
+  ]:[];
+  return <div className="ns-diagnostics">
+    <div className="ns-log-toolbar"><strong>Yerel WordPress sağlık denetimi</strong>
+      <button type="button" disabled={busy} onClick={()=>void run()}>
+        <RefreshCw size={15}/>{busy?'Denetleniyor…':report?'Yeniden denetle':'Denetimi çalıştır'}
+      </button></div>
+    {busy?<div className="ns-empty">Yerel WordPress ve veritabanı kontrol ediliyor…</div>
+      :error?<div className="ns-diagnostics-error">{error}</div>
+      :report?<div className="ns-diagnostics-result">
+        <span className={'ns-status-tag '+(report.checksPassed?'ready':'missing')}>
+          {report.checksPassed?'Kontroller başarılı':'İncelenecek uyarılar var'}
+        </span>
+        <div className="ns-diagnostic-facts">{facts.map(([label,value])=>
+          <div key={label}><small>{label}</small><strong title={value}>{value}</strong></div>)}</div>
+        <div className="ns-diagnostic-url"><small>Yerel WordPress adresi</small>
+          <strong title={report.siteUrl}>{report.siteUrl}</strong></div>
+        {report.warnings.map((warning,i)=><div className="ns-diagnostics-warning" key={i}>
+          <CircleAlert size={14}/>{warning}</div>)}
+      </div>:<div className="ns-empty">Sistemi denetlemek için üstteki düğmeye bas. Veriler dışarı aktarılmaz.</div>}
   </div>;
 }
 
@@ -316,6 +362,19 @@ export function NativeWorkspace({
             </div>
           </div><div className="ns-hint"><ShieldCheck size={15}/> Bu sayfa doğrudan seçtiğin WordPress projesiyle çalışır; keyfî komut yürütmez.</div>
         </div>}
+        {page==='health'&&<div className="ns-view">
+          <div className="ns-panel ns-grow">
+            <div className="ns-panel-heading"><div><strong>Yerel Sağlık Denetimi</strong>
+              <small>WP-CLI, PHP ve MariaDB durumu · hiçbir üçüncü taraf API kullanılmaz</small></div>
+              <span className="ns-status-tag ready">Yerel</span></div>
+            {siteChooser()}
+            <div className="ns-embedded-toolkit">
+              {selected?<EmbeddedDiagnostics key={selected.id} site={selected}/>
+                :<div className="ns-empty">Tanılama için WordPress sitesi oluştur.</div>}
+            </div>
+          </div><div className="ns-hint"><ShieldCheck size={15}/>
+            Bu işlem yalnızca yerel WordPress verilerini okur. AI analizi ayrı bir gelecek modüldür.</div>
+        </div>}
         {page==='settings'&&<div className="ns-view"><div className="ns-panel ns-grow">
           <div className="ns-panel-heading"><div><strong>Tercihler ve Güvenlik</strong><small>Paket, modül ve yardım seçenekleri</small></div></div>
           <div className="ns-settings-grid">
@@ -326,7 +385,7 @@ export function NativeWorkspace({
           </div>
           <div className="ns-hint"><CircleAlert size={15}/> Dağıtım öncesinde Ventura cihaz testi, Apple imzalama ve noter onayı gereklidir.</div>
         </div></div>}
-        {!['overview','sites','modules','settings'].includes(page)&&!isEngine&&!isSiteTool&&<div className="ns-view">
+        {!['overview','sites','modules','settings','health'].includes(page)&&!isEngine&&!isSiteTool&&<div className="ns-view">
           <div className="ns-panel ns-grow ns-roadmap"><div className="ns-large-icon"><current.Icon size={29}/></div>
             <span className="ns-status-tag planned">Henüz uygulanmadı</span>
             <h2>{info[page]?.title||current.label}</h2>
