@@ -47,8 +47,6 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Compile native Intel .app and .dmg
         run: npm run tauri build -- --target x86_64-apple-darwin --bundles dmg
-      - name: Validate Intel app architecture and Ventura deployment target metadata
-        run: python3 scripts/check-native-macos-app.py
       - name: Verify real DMG and its mounted app
         shell: bash
         run: |
@@ -69,7 +67,31 @@ jobs:
           mounted=1
           test -d "$mnt/PressForge.app"
           test ! -e "$mnt/PressForge.app/Contents/Resources/runtime/php/bin/php"
-          file "$mnt/PressForge.app/Contents/MacOS/pressforge"
+          # Tauri removes the intermediate bundle/macos app after making a DMG.
+          # Inspect the shipped application INSIDE the mounted disk image.
+          python3 - "$mnt/PressForge.app" <<'PY'
+          import plistlib, pathlib, re, subprocess, sys
+          app=pathlib.Path(sys.argv[1])
+          with (app/'Contents/Info.plist').open('rb') as fp: info=plistlib.load(fp)
+          assert info.get('CFBundleIdentifier') == 'dev.pressforge.desktop', info
+          executable=info['CFBundleExecutable']
+          binary=app/'Contents/MacOS'/executable
+          assert binary.is_file(), f'Missing bundled executable: {binary}'
+          description=subprocess.check_output(['file','-b',str(binary)],text=True)
+          assert 'Mach-O' in description and 'x86_64' in description, description
+          output=subprocess.check_output(['otool','-l',str(binary)],text=True)
+          minimum=re.findall(r'\\bminos\\s+(\\d+(?:\\.\\d+){1,2})',output)
+          if not minimum:
+              minimum=re.findall(r'\\bversion\\s+(\\d+(?:\\.\\d+){1,2})',output)
+          assert minimum, 'No Mach-O minimum deployment version found'
+          versions=[tuple((list(map(int,x.split('.'))) + [0,0,0])[:3]) for x in minimum]
+          assert max(versions) <= (13,0,0), f'Executable target newer than Ventura: {versions}'
+          plist_min=info.get('LSMinimumSystemVersion','13.0')
+          assert tuple((list(map(int,plist_min.split('.'))) + [0,0,0])[:3]) <= (13,0,0), plist_min
+          print('[OK] Mounted app executable:',binary.name)
+          print('[OK] Intel x86_64, Mach-O minOS:',versions)
+          print('[NOT TESTED] Real Ventura launch or portable WordPress engine')
+          PY
           shasum -a 256 "$dmg"
           echo '[OK] Physical Intel DMG opens and contains PressForge.app.'
           echo '[WARNING] No bundled PHP/MariaDB; not tested for WordPress site creation.'
