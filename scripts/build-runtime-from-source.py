@@ -221,6 +221,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify-lock", action="store_true", help="Offline schema/checksum format validation only")
     parser.add_argument("--download-only", action="store_true", help="Download and validate source archives; do not compile")
+    parser.add_argument("--extract-only", action="store_true", help="Verify downloads and safely extract sources without compiling")
     parser.add_argument("--build", action="store_true", help="Compile on real Intel macOS Ventura 13")
     parser.add_argument("--jobs", type=int, default=2, help="Parallel builds; 2 is conservative for older Intel Macs")
     parser.add_argument("--build-dir", type=Path, default=DEFAULT_BUILD)
@@ -231,14 +232,18 @@ def main() -> None:
     print(f"[OK] Source lock: PHP {lock['php']['version']} / MariaDB {lock['mariadb']['version']}")
     if args.verify_lock:
         return
-    if not (args.build or args.download_only):
-        parser.error("Specify --verify-lock, --download-only or --build")
+    if not (args.build or args.download_only or args.extract_only):
+        parser.error("Specify --verify-lock, --download-only, --extract-only or --build")
     env = preflight() if args.build else None
     root = args.build_dir.expanduser().resolve()
     archives = {key: download(lock[key], root / "downloads") for key in ("php", "mariadb")}
     if args.download_only:
         return
     sources = {key: unpack(archives[key], root / "sources" / key) for key in ("php", "mariadb")}
+    if args.extract_only:
+        for name, source in sources.items():
+            print(f"[OK] Securely extracted {name}: {source}")
+        return
     php_prefix = root / "dist/php"
     mariadb_prefix = root / "dist/mariadb"
     build_php(sources["php"], php_prefix, env, args.jobs)
