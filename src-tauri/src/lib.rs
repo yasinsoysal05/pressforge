@@ -517,9 +517,14 @@ fn create_site_impl(app: &AppHandle, state: &AppState, new: NewSite) -> Result<S
     let name = format!("pf_{}", &id[..12]);
     let db_user = format!("pf_{}", &id[..12]);
     let db_password = Uuid::new_v4().simple().to_string();
-    let root = sites_root(app)?.join(&id);
+    // WordPress wp-config.php contains the generated database password.
+    // Restrict every ancestor of the WordPress document root to the owner.
+    let site_base = sites_root(app)?;
+    ensure_private_directory(&site_base)?;
+    let root = site_base.join(&id);
+    ensure_private_directory(&root)?;
     let public = root.join("public");
-    fs::create_dir_all(&public).map_err(|e| e.to_string())?;
+    ensure_private_directory(&public)?;
 
     let mut attempted_db = false;
     let install_result: Result<(), String> = (|| {
@@ -732,6 +737,17 @@ mod runtime_security_tests {
         fs::set_permissions(&data, fs::Permissions::from_mode(0o755)).unwrap();
         ensure_private_directory(&data).unwrap();
         assert_eq!(fs::metadata(&data).unwrap().permissions().mode() & 0o777, 0o700);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn word_press_config_parent_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let public = root.path().join("sites/site-a/public");
+        for p in [root.path().join("sites"), root.path().join("sites/site-a"), public.clone()] {
+            ensure_private_directory(&p).unwrap();
+            assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o700);
+        }
     }
     #[cfg(unix)]
     #[test]
