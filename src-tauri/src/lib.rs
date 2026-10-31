@@ -515,6 +515,16 @@ fn create_site_impl(app: &AppHandle, state: &AppState, new: NewSite) -> Result<S
             "--skip-email".into(),
             "--prompt=admin_password".into(),
         ], Some(&format!("{}\n", new.admin_password)))?;
+        // WP-CLI can derive siteurl with the installation directory suffix
+        // when --path is outside the current working directory. PressForge
+        // serves the WordPress public directory as the actual document root.
+        // Normalize both options to the chosen localhost site URL.
+        for option in ["siteurl", "home"] {
+            wp(app, &[
+                "option".into(), "update".into(), option.into(), site_url(port),
+                format!("--path={}", public.display()),
+            ], None)?;
+        }
         Ok(())
     })();
     if let Err(err) = install_result {
