@@ -2,14 +2,14 @@ name: Build modular PressForge Intel DMG UI preview (NOT standalone)
 
 on:
   push:
-    branches: [feat/modular-local-studio]
+    branches: [build/modular-preview-snapshot-20261101]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pressforge-modular-ui-preview-${{ github.ref }}
+  group: pressforge-modular-snapshot-ui-preview-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
