@@ -60,3 +60,16 @@
 .pf-module-switch:hover:not(:disabled){background:#443663;color:#fff}
 .pf-module:has(.pf-module-status.disabled){opacity:.76}
 .pf-open-snapshots{margin:14px 0;display:inline-flex}
+
+
+.pf-db-inspector{display:grid;grid-template-columns:minmax(155px,0.95fr) minmax(0,1.45fr);gap:12px;margin-top:16px;min-height:225px}
+.pf-db-tables,.pf-db-schema{display:flex;flex-direction:column;gap:6px;min-width:0;max-height:350px;overflow:auto;background:#171d30;border:1px solid #343b54;border-radius:11px;padding:12px}
+.pf-db-tables>strong,.pf-db-schema>strong{color:#dbdef5;font-size:12px;padding-bottom:8px;border-bottom:1px solid #343b54}
+.pf-db-tables button{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#c0c9e2;font-size:11px;text-align:left;overflow-wrap:anywhere;padding:8px;border:1px solid transparent;border-radius:6px;background:transparent}
+.pf-db-tables button:hover:not(:disabled),.pf-db-tables button.selected{background:#302747;color:#e6ddff;border-color:#50406c}
+.pf-db-tables small,.pf-db-schema p{color:#93a1bd;font-size:11px;line-height:1.5}
+.pf-db-columns{display:flex;flex-direction:column;gap:7px;overflow:auto}
+.pf-db-column{display:grid;grid-template-columns:minmax(80px,1fr) minmax(90px,1fr) auto;align-items:center;gap:7px;border-bottom:1px solid #303750;padding:6px 0}
+.pf-db-column code{color:#c1b4ff;font-size:10px;overflow-wrap:anywhere}
+.pf-db-column small{font-size:10px;color:#aeb7cd;overflow-wrap:anywhere}
+@media(max-width:630px){.pf-db-inspector{grid-template-columns:1fr}.pf-db-tables{max-height:175px}.pf-db-schema{max-height:270px}}
