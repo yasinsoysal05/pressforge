@@ -77,3 +77,15 @@ After that we must verify ALL bundled Mach-O dylibs and libraries, MariaDB initi
 Never connect a personal Mac with documents, secrets or SSH keys as an unrestricted self-hosted runner for public pull requests. Execute only approved builds with a dedicated isolated account and manually reviewed code.
 
 Tracking: https://github.com/yasinsoysal05/pressforge/issues/8
+
+## Final Tauri app bundle gate
+
+`scripts/build-intel-dmg.sh` now checks the generated `PressForge.app` **after Tauri packaging**. The gate rejects the build if:
+
+- The bundle identifier is not `dev.pressforge.desktop`, or the expected app directory does not contain exactly one `.app`.
+- `Contents/Resources/runtime` does not include executable PHP, MariaDB client/server and the MariaDB database installer.
+- The WP-CLI PHAR bytes differ from the committed SHA-512 value in `runtime-lock.json`.
+- Any bundled symlink escapes the app's runtime resource directory.
+- A Mach-O dependency lacks the Intel x86_64 slice, requires macOS newer than 13, or points to an unbundled dylib.
+
+The bundled-resource check is in `scripts/verify-app-bundle-macos.py`. It **does not** replace the real Ventura 13 device test, the Tauri UI test, a clean-machine test, Apple signing/notarization or complete third-party license review. A passing developer build is not a public release.
