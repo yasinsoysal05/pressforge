@@ -30,3 +30,7 @@ The [experimental runtime workflow](../.github/workflows/validate-portable-runti
 - Source code and tests are **experimental**.
 - No signed or notarized standalone Ventura DMG has passed the above gate.
 - Native `.app` compilation on GitHub's Intel macOS runner does **not** include bundled PHP/MariaDB unless staging is successful.
+
+## WP-CLI supply-chain lock
+
+`runtime-lock.json` now records the expected SHA-512 of the official WP-CLI PHAR. Builds verify the downloaded bytes against that **versioned local digest** rather than trusting a mutable checksum served from the same remote location. When upstream replaces `wp-cli.phar`, the build fails until a reviewed lockfile update is merged. This is an integrity and reproducibility guard, not a substitute for independent provenance verification and signature checks.
