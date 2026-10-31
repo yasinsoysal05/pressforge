@@ -7,6 +7,7 @@ Real Ventura app start, signing and notarization remain separate acceptance gate
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
@@ -32,10 +33,19 @@ def fail(message: str) -> None:
 def main() -> None:
     if sys.platform != "darwin" or os.uname().machine != "x86_64":
         fail("This validation must run on Intel macOS")
-    apps = sorted(APPDIR.glob("*.app"))
-    if len(apps) != 1:
-        fail(f"Expected one .app in {APPDIR}, found {len(apps)}")
-    app = apps[0]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--app", type=Path,
+                        help="Override the built .app path, e.g. a read-only mounted DMG")
+    args = parser.parse_args()
+    if args.app is not None:
+        app = args.app.expanduser().absolute()
+        if not app.is_dir() or app.suffix != ".app":
+            fail(f"Invalid mounted app path: {app}")
+    else:
+        apps = sorted(APPDIR.glob("*.app"))
+        if len(apps) != 1:
+            fail(f"Expected one .app in {APPDIR}, found {len(apps)}")
+        app = apps[0]
     info = app / "Contents/Info.plist"
     if not info.is_file():
         fail("Missing Contents/Info.plist")
