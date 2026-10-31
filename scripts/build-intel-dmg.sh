@@ -39,11 +39,10 @@ npm ci --no-audit --no-fund
 export MACOSX_DEPLOYMENT_TARGET=13.0
 npm run tauri build -- --target x86_64-apple-darwin
 
-# Stage validation alone is insufficient: ensure the FINAL Tauri .app really
-# contains relocatable Intel PHP/MariaDB and the pinned WP-CLI PHAR.
-python3 scripts/check-native-macos-app.py
-python3 scripts/verify-app-bundle-macos.py
-
+# Tauri may remove the intermediate bundle/macos/*.app after DMG creation.
+# Validate the *actual* disk image instead; verify-final-dmg-macos.sh mounts it
+# read-only and runs verify-app-bundle-macos.py against the shipped application.
+# The source runtime audits above already validate the staging directory.
 # Validate the actual DMG image, not only the pre-packaging .app.
 dmg_dir="src-tauri/target/x86_64-apple-darwin/release/bundle/dmg"
 shopt -s nullglob
