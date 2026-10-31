@@ -1,4 +1,5 @@
 //! PressForge MVP: local-only WordPress manager. No shell interpolation or remote deployment.
+mod studio_modules;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -831,6 +832,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             runtime_mode, check_dependencies, list_sites, create_site, start_site, stop_site,
             archive_site, read_log, open_site, open_help,
+            studio_modules::list_studio_modules,
+            studio_modules::list_site_extensions,
+            studio_modules::manage_site_extension,
+            studio_modules::run_site_maintenance,
+            studio_modules::create_site_snapshot,
+            studio_modules::list_site_snapshots,
         ])
         .build(tauri::generate_context!())
         .expect("PressForge başlatılamadı");
