@@ -82,7 +82,7 @@ jobs:
           output=subprocess.check_output(['otool','-l',str(binary)],text=True)
           minimum=re.findall(r'minos[ ]+([0-9]+(?:[.][0-9]+){1,2})',output)
           if not minimum:
-          minimum=re.findall(r'minos[ ]+([0-9]+(?:[.][0-9]+){1,2})',output)
+              minimum=re.findall(r'version[ ]+([0-9]+(?:[.][0-9]+){1,2})',output)
           assert minimum, 'No Mach-O minimum deployment version found'
           versions=[tuple((list(map(int,x.split('.'))) + [0,0,0])[:3]) for x in minimum]
           assert max(versions) <= (13,0,0), f'Executable target newer than Ventura: {versions}'
