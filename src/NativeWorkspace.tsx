@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ComponentType } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import type { LucideIcon } from 'lucide-react';
 import {
   Activity, Archive, ArrowUpRight, Blocks, BookOpen, Check, ChevronDown,
   ChevronLeft, ChevronRight, CircleAlert, Code2, Command, Database,
@@ -18,7 +18,7 @@ export type SiteRecord = {
 };
 export type RuntimeDependency = {name:string;installed:boolean;version:string;path:string};
 export type ToolkitTab = 'plugin'|'theme'|'snapshot'|'maintenance'|'database';
-type Glyph = ComponentType<{size?:number;strokeWidth?:number;className?:string}>;
+type Glyph = LucideIcon;
 type NavItem = {id:string;label:string;Icon:Glyph;module?:string};
 type NavGroup = {id:string;title:string;Icon:Glyph;items:NavItem[]};
 
