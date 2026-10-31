@@ -25,6 +25,8 @@ jobs:
           python3 -m py_compile scripts/audit-runtime-macos.py
           python3 -m py_compile scripts/smoke-mariadb-macos.py
           python3 -m py_compile scripts/smoke-wordpress-macos.py
+      - name: Intel universal Mach-O architecture and minOS regression tests
+        run: python3 -m unittest discover -s tests -p 'test_macho_intel.py' -v
       - name: Check bash build entrypoints
         run: |
           bash -n scripts/build-intel-dmg.sh
