@@ -14,11 +14,14 @@
       {
         "label": "main",
         "title": "PressForge — WordPress Studio",
-        "width": 1260,
-        "height": 820,
-        "minWidth": 880,
-        "minHeight": 620,
-        "backgroundColor": "#0b1020"
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "backgroundColor": "#111521",
+        "center": true,
+        "decorations": true,
+        "resizable": true
       }
     ]
   },

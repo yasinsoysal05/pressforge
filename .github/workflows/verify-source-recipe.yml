@@ -4,7 +4,7 @@ on:
   push:
     branches: [feat/ventura-source-build]
   pull_request:
-    branches: [main]
+    branches: [main, feat/ventura-source-build]
   workflow_dispatch:
 
 permissions:

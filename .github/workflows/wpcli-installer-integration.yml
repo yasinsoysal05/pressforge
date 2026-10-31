@@ -2,7 +2,7 @@ name: WordPress installer integration checks (Ubuntu)
 
 on:
   pull_request:
-    branches: [main, feat/portable-runtime-validation]
+    branches: [main, feat/portable-runtime-validation, feat/ventura-source-build]
   workflow_dispatch:
 
 concurrency:
@@ -72,6 +72,58 @@ jobs:
           installed_url="$(printf '%s' "$installed_url" | sed 's:/*$::')"
           echo "[CHECK] Installed site URL: $installed_url"
           test "$installed_url" = 'http://127.0.0.1:18117'
+          # Exercise the same allowlisted WP-CLI functions used by the modular UI.
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" plugin list --format=json --quiet >"$tmp/plugins.json"
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" theme list --format=json --quiet >"$tmp/themes.json"
+          python3 - "$tmp" <<'PY'
+          import json, pathlib, sys
+          root=pathlib.Path(sys.argv[1])
+          for filename in ("plugins.json", "themes.json"):
+              data=json.loads((root/filename).read_text())
+              assert isinstance(data,list), filename
+              assert all(isinstance(item.get("name"),str) for item in data), filename
+          print("[OK] WP-CLI JSON plugin/theme lists")
+          PY
+          # Exercise the new read-only Database Inspector allowlist commands.
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" db tables --format=list \
+            --all-tables-with-prefix --skip-plugins --skip-themes --skip-packages \
+            --quiet > "$tmp/tables.txt"
+          test -s "$tmp/tables.txt"
+          db_table="$(head -n 1 "$tmp/tables.txt")"
+          [[ "$db_table" =~ ^[a-zA-Z0-9_]+$ ]] || exit 1
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" db columns "$db_table" \
+            --format=json --skip-plugins --skip-themes --skip-packages \
+            --quiet > "$tmp/columns.json"
+          python3 - "$tmp/columns.json" <<'PY'
+          import json, sys
+          rows=json.load(open(sys.argv[1]))
+          assert isinstance(rows,list) and len(rows)>0
+          assert all(isinstance(row,dict) and ('Field' in row or 'field' in row) for row in rows)
+          print('[OK] Read-only WordPress DB tables and column schema')
+          PY
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" cache flush --quiet
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" rewrite flush --quiet
+          # Core checksum verification is a DIAGNOSTIC rather than a
+          # prerequisite for taking a SQL backup. A newly released upstream
+          # WordPress version can briefly lack matching published checksums.
+          # Always exercise actual SQL export and HTTP even when this warns.
+          if php /tmp/pressforge-wp-cli.phar --path="$tmp" core verify-checksums --quiet; then
+            echo '[OK] Official WP core checksum verification'
+          else
+            echo '[WARN] Official WP core checksum verification failed; review upstream checksum availability or unexpected modified core files'
+          fi
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" db export "$tmp/snapshot-test.sql" --quiet
+          test -s "$tmp/snapshot-test.sql"
+          # Exercise the same SQL import/export primitives as the new
+          # rollback-capable snapshot restore. Keep credentials out of logs.
+          baseline="$(php /tmp/pressforge-wp-cli.phar --path="$tmp" option get blogdescription)"
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" option update blogdescription 'PressForge CI altered content' --quiet
+          changed="$(php /tmp/pressforge-wp-cli.phar --path="$tmp" option get blogdescription)"
+          test "$changed" = 'PressForge CI altered content'
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" db import "$tmp/snapshot-test.sql" --quiet
+          restored="$(php /tmp/pressforge-wp-cli.phar --path="$tmp" option get blogdescription)"
+          test "$restored" = "$baseline"
+          echo '[OK] WordPress SQL snapshot export, mutation and successful restore'
           php -S 127.0.0.1:18117 -t "$tmp" src-tauri/src/router.php >"$tmp/php.log" 2>&1 &
           server_pid="$!"
           for attempt in $(seq 1 30); do

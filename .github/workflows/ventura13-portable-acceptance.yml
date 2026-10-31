@@ -1,0 +1,61 @@
+name: Ventura 13 portable runtime and DMG acceptance (self-hosted)
+
+# This workflow is never triggered by pull requests: a self-hosted Mac can
+# contain developer credentials and must not run untrusted PR branch code.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pressforge-ventura13-acceptance
+  cancel-in-progress: false
+
+jobs:
+  ventura-acceptance:
+    name: Intel Ventura 13 - PHP MariaDB WordPress and DMG
+    runs-on: [self-hosted, macOS, X64, ventura-13]
+    timeout-minutes: 180
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
+    steps:
+      - name: Checkout this explicitly selected source ref
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify hardware, OS and source lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(uname -s)" = "Darwin" && "$(uname -m)" = "x86_64" ]] || exit 1
+          [[ "$(sw_vers -productVersion)" = 13.* ]] || exit 1
+          python3 scripts/check-version.py
+          python3 scripts/verify-project.py
+          bash scripts/ventura-pipeline.sh --doctor
+      - name: Build pinned PHP/MariaDB, WP-CLI and run disposable WordPress E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/ventura-pipeline.sh --build --jobs 2
+      - name: Record portable DMG integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          images=(src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg)
+          [[ "${#images[@]}" -eq 1 ]] || exit 1
+          bash scripts/verify-final-dmg-macos.sh "${images[0]}"
+          shasum -a 256 "${images[0]}" | tee portable-dmg.sha256
+          echo 'VERIFIED: Source-built portable runtime and disposable WordPress E2E on Intel Ventura 13.'
+          echo 'NOT VERIFIED: Clean-machine GUI installation, signing/notarization, license review.'
+      - name: Upload unsigned Ventura developer DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: PressForge-Intel-Ventura13-PORTABLE-UNSIGNED-TEST
+          path: |
+            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+            portable-dmg.sha256
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0

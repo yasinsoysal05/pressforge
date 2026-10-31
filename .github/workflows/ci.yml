@@ -5,7 +5,7 @@ on:
     branches: [main]
   pull_request:
     # PR #9 is stacked on PR #7; test the complete source-to-DMG branch too.
-    branches: [main, feat/portable-runtime-validation]
+    branches: [main, feat/portable-runtime-validation, feat/ventura-source-build]
   workflow_dispatch:
 
 concurrency:
