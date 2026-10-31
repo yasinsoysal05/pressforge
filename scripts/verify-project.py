@@ -38,7 +38,7 @@ assert 'overflow:hidden!important' in shell_css
 assert 'height:100vh' in shell_css
 assert 'ns-pager' in native and 'ns-nav-children' in native
 for module_id in ('php','mariadb','wpcli','webserver','extensions','database',
-                  'snapshots','logs','ssl','domains','php_versions',
+                  'snapshots','logs','health','ssl','domains','php_versions',
                   'server_adapters','clone_import','git','deployment',
                   'live_sync','diagnostics'):
     assert f"id:'{module_id}'" in native, f'Missing sidebar module page: {module_id}'
