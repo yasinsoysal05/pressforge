@@ -1,0 +1,51 @@
+name: Verify pinned upstream source archives (manual/lock update)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/ventura-source-build]
+    paths:
+      - source-runtime-lock.json
+      - .github/workflows/verify-upstream-source-tarballs.yml
+
+concurrency:
+  group: pressforge-upstream-sources-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  download-verify:
+    name: Download and verify SHA-256 for PHP/MariaDB sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify locked archive contents (no compilation)
+        run: python3 scripts/build-runtime-from-source.py --download-only
+      - name: Inspect archive link types before safe extraction
+        run: |
+          python3 - <<'PY'
+          import tarfile
+          from pathlib import Path
+          for path in sorted(Path('.pressforge-build/ventura/downloads').glob('*')):
+              with tarfile.open(path, 'r:*') as archive:
+                  members = archive.getmembers()
+                  symlinks = [m.name for m in members if m.issym()]
+                  hardlinks = [m.name for m in members if m.islnk()]
+                  print(f'{path.name}: total={len(members)}, symlinks={len(symlinks)}, hardlinks={len(hardlinks)}')
+                  print('Example symlinks:', symlinks[:8])
+                  print('Example hardlinks:', hardlinks[:8])
+          PY
+      - name: Safely extract the actual verified PHP/MariaDB archives
+        run: python3 scripts/build-runtime-from-source.py --extract-only
+      - name: Confirm no installation was performed
+        run: |
+          test -f .pressforge-build/ventura/downloads/php-8.3.35.tar.xz
+          test -f .pressforge-build/ventura/downloads/mariadb-11.4.13.tar.gz
+          test ! -d .pressforge-build/ventura/dist
+          echo 'Only SHA-256-verified source archives downloaded; no runtime built.'

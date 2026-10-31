@@ -1,0 +1,46 @@
+name: Source runtime recipe verification
+
+on:
+  push:
+    branches: [feat/ventura-source-build]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-lock:
+    name: Source recipe syntax and lock validation (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python source syntax
+        run: python3 -m py_compile scripts/build-runtime-from-source.py
+      - name: Bash build-host doctor and orchestration syntax
+        run: |
+          bash -n scripts/doctor-ventura-build-host.sh
+          bash -n scripts/ventura-pipeline.sh
+          bash -n scripts/verify-runtime-on-ventura.sh
+          bash -n scripts/build-intel-dmg.sh
+          bash -n scripts/verify-final-dmg-macos.sh
+      - name: Inspect post-build app bundle verifier syntax
+        run: |
+          python3 -m py_compile scripts/verify-app-bundle-macos.py
+          python3 -m py_compile scripts/audit-runtime-macos.py
+      - name: Source SHA-256 lock schema
+        run: python3 scripts/build-runtime-from-source.py --verify-lock
+      - name: Source archive extraction security regression tests
+        run: python3 -m unittest discover -s tests -p 'test_source_archive.py' -v
+      - name: No source build outputs tracked by Git
+        run: |
+          if git ls-files | grep -E '(^|/)\.pressforge-build/|/dist/(mariadb|php)/'; then
+            echo 'Generated build outputs must not be committed' >&2
+            exit 1
+          fi
+          echo 'No generated binary artifacts in Git'

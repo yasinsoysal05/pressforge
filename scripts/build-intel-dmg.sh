@@ -7,6 +7,14 @@ if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "x86_64" ]]; then
   exit 1
 fi
 
+# A distributable Ventura DMG must be built and exercised on Ventura,
+# not on a newer macOS runner with incompatible system libraries.
+host_version="$(sw_vers -productVersion)"
+case "$host_version" in
+  13.*) ;;
+  *) echo "[HATA] Ventura hedefi için Intel macOS 13.x gerekir; mevcut: $host_version" >&2; exit 1;;
+esac
+
 for bin in node npm cargo rustc python3; do
   command -v "$bin" >/dev/null || { echo "[HATA] Build ortamında $bin eksik" >&2; exit 1; }
 done
@@ -24,9 +32,31 @@ fi
 python3 scripts/verify-bundled-runtime.py
 python3 scripts/audit-runtime-macos.py
 python3 scripts/smoke-mariadb-macos.py
+# A successful MariaDB boot is not enough: install an actual WordPress site,
+# fetch its homepage and verify WP login before creating even a dev DMG.
+python3 scripts/smoke-wordpress-macos.py
 npm ci --no-audit --no-fund
 export MACOSX_DEPLOYMENT_TARGET=13.0
-npm run tauri build -- --target x86_64-apple-darwin
 
-find src-tauri/target/x86_64-apple-darwin/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print
-printf '\n[UYARI] Bu DMG kod imzalama/notarization olmadan kamu dağıtımı için hazır değildir.\n'
+# Tauri removes bundle/macos/*.app when creating a DMG. Validate a standalone
+# .app first, BEFORE the subsequent DMG packaging pass removes it.
+npm run tauri build -- --target x86_64-apple-darwin --bundles app
+python3 scripts/check-native-macos-app.py
+python3 scripts/verify-app-bundle-macos.py
+
+# This is a second, incremental bundling pass; final integrity is inspected
+# inside the mounted disk image, not by looking for the deleted staging .app.
+npm run tauri build -- --target x86_64-apple-darwin --bundles dmg
+
+# Validate the actual DMG image, not only the pre-packaging .app.
+dmg_dir="src-tauri/target/x86_64-apple-darwin/release/bundle/dmg"
+shopt -s nullglob
+dmgs=("$dmg_dir"/*.dmg)
+shopt -u nullglob
+if [[ "${#dmgs[@]}" -ne 1 ]]; then
+  echo "[FAIL] Exactly one DMG is required, found ${#dmgs[@]}" >&2
+  exit 1
+fi
+bash scripts/verify-final-dmg-macos.sh "${dmgs[0]}"
+printf '[OK] Development DMG verified: %s\n' "${dmgs[0]}"
+printf '\n[UYARI] Bu DMG kod imzalama/notarization ve temiz Ventura testi olmadan kamu dağıtımı için hazır değildir.\n'

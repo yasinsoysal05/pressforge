@@ -4,7 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # PR #9 is stacked on PR #7; test the complete source-to-DMG branch too.
+    branches: [main, feat/portable-runtime-validation]
   workflow_dispatch:
 
 concurrency:
