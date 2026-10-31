@@ -20,6 +20,13 @@ This checks the pinned manifest; it does not download, compile, or modify system
 
 ## Compile on a real Intel macOS Ventura 13.x build host
 
+Start with this **read-only** prerequisite check (does not install or alter services):
+
+```bash
+bash scripts/doctor-ventura-build-host.sh
+```
+
+
 Prerequisites: Xcode Command Line Tools, Python 3.9+, cmake, pkg-config, GNU bison 3+, clang/clang++, make. Build dependencies must also target Intel Ventura: openssl, libxml-2.0, libcurl, libzip, oniguruma, icu-uc, icu-i18n. Configure PKG_CONFIG_PATH to point to approved x86_64 dependency prefixes. The end user will NOT need these build tools once a valid DMG exists.
 
 ```bash
