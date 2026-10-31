@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import urllib.error
 import urllib.request
 
@@ -128,27 +129,57 @@ def download(source: dict, dest: Path) -> Path:
     return output
 
 
+# These two MariaDB upstream DuckDB integration-test fixtures are symlinks,
+# not runtime code. Skipping them avoids any link-based extraction escape on
+# Python 3.9, where tarfile's newer data extraction filter is unavailable.
+TEST_FIXTURE_SYMLINKS = {
+    "mariadb-11.4.13/storage/duckdb/third_parties/duckdb/data/csv/glob/crawl/.symbolic_link/link_to_file",
+    "mariadb-11.4.13/storage/duckdb/third_parties/duckdb/data/csv/glob/crawl/.symbolic_link/mydir/link_to_upper_dir",
+}
+
+
+def safe_members(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
+    validated = []
+    for member in archive.getmembers():
+        name = member.name
+        path = Path(name)
+        if (path.is_absolute() or not name or ".." in path.parts
+                or "\\x00" in name or not (member.isfile() or member.isdir()
+                    or member.issym() and name in TEST_FIXTURE_SYMLINKS)):
+            fail(f"Disallowed source archive entry: {name}")
+        if member.issym():
+            print(f"[SKIP] Optional MariaDB test fixture link: {name}", flush=True)
+            continue
+        validated.append(member)
+    return validated
+
+
 def unpack(file: Path, target: Path) -> Path:
-    target.mkdir(parents=True, exist_ok=True)
     marker = target / ".pressforge-extracted"
     if marker.exists():
         roots = [p for p in target.iterdir() if p.is_dir()]
         if len(roots) == 1:
             return roots[0]
-    # Source tarball is checksum verified. Still reject path traversal and
-    # absolute entries before extracting with macOS-compatible Python.
-    with tarfile.open(file, "r:*") as archive:
-        members = archive.getmembers()
-        for member in members:
-            parts = Path(member.name).parts
-            if member.name.startswith("/") or ".." in parts or member.isdev():
-                fail(f"Unsafe tar member: {member.name}")
-        archive.extractall(target)
+        fail(f"Broken extraction marker: {target}")
+    # Never extract onto a partially written source tree or preexisting links.
+    if target.exists() and any(target.iterdir()):
+        fail(f"Source target is not empty; inspect/clean it manually: {target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Build in a fresh private directory; only publish on successful extraction.
+    with tempfile.TemporaryDirectory(prefix=".pf-extract-", dir=target.parent) as tmp:
+        stage = Path(tmp) / "source"
+        stage.mkdir()
+        with tarfile.open(file, "r:*") as archive:
+            members = safe_members(archive)
+            archive.extractall(stage, members=members)
+        roots = [p for p in stage.iterdir() if p.is_dir()]
+        if len(roots) != 1:
+            fail(f"Unexpected source archive layout: {file.name}")
+        if target.exists():
+            target.rmdir()
+        stage.rename(target)
     marker.touch()
-    roots = [p for p in target.iterdir() if p.is_dir()]
-    if len(roots) != 1:
-        fail(f"Unexpected source archive layout: {file.name}")
-    return roots[0]
+    return target / roots[0].name
 
 
 def build_php(src: Path, prefix: Path, env: dict, jobs: int) -> None:
