@@ -18,6 +18,9 @@
     "url": "https://archive.mariadb.org/mariadb-11.4.13/source/mariadb-11.4.13.tar.gz",
     "filename": "mariadb-11.4.13.tar.gz",
     "sha256": "1bb254b106d0a7ca871cfa18fa6e18d4b80a7430f9ec9d1571ec4271a13def96",
-    "source_checksum_page": "https://dlm.mariadb.com/browse/mariadb_server/11.4.13/source/"
+    "source_checksum_page": "https://dlm.mariadb.com/browse/mariadb_server/11.4.13/source/",
+    "fallback_urls": [
+      "https://mirror.ossplanet.net/mirror/mariadb/mariadb-11.4.13/source/mariadb-11.4.13.tar.gz"
+    ]
   }
 }
