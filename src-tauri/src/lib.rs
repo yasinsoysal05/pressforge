@@ -833,6 +833,7 @@ pub fn run() {
             runtime_mode, check_dependencies, list_sites, create_site, start_site, stop_site,
             archive_site, read_log, open_site, open_help,
             studio_modules::list_studio_modules,
+            studio_modules::set_studio_module_enabled,
             studio_modules::list_site_extensions,
             studio_modules::manage_site_extension,
             studio_modules::run_site_maintenance,
