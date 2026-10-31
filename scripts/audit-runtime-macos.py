@@ -84,7 +84,12 @@ def check() -> None:
             errors.append(f"No macOS minimum load command: {item}")
         elif max(minimum) > MIN_TARGET:
             errors.append(f"Requires macOS >13: {item} ({minimum})")
-        dylib_id = run("otool", "-arch", "x86_64", "-D", str(item)).splitlines()
+        # Executables may legitimately have no dylib install-name ID.
+        id_probe = subprocess.run(
+            ["otool", "-arch", "x86_64", "-D", str(item)],
+            capture_output=True, text=True, check=False,
+        )
+        dylib_id = id_probe.stdout.splitlines() if id_probe.returncode == 0 else []
         self_id = dylib_id[1].strip() if len(dylib_id)>1 else ""
         deps = run("otool", "-arch", "x86_64", "-L", str(item)).splitlines()[1:]
         for entry in deps:
