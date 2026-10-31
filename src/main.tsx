@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { invoke } from '@tauri-apps/api/core';
-import { Check, Database, Loader2, Plus, RefreshCw, ShieldCheck, X } from 'lucide-react';
+import { Check, Database, Loader2, Plus, ShieldCheck, X } from 'lucide-react';
 import './styles.css';
 import { SiteToolkit, type ModuleInfo } from './StudioModules';
 import { NativeWorkspace, type ToolkitTab } from './NativeWorkspace';
@@ -42,9 +42,6 @@ function App() {
   const [showForm, setShowForm] = useState(false);
   const [createStep, setCreateStep] = useState<0|1>(0);
   const [form, setForm] = useState<CreateSite>({ ...initialForm });
-  const [logSite, setLogSite] = useState<Site | null>(null);
-  const [logs, setLogs] = useState('');
-  const [logPage, setLogPage] = useState(0);
   const [notice, setNotice] = useState<{ kind: 'error' | 'success'; message: string } | null>(null);
 
   const refresh = useCallback(async () => {
@@ -96,15 +93,6 @@ function App() {
     catch (e) { notifyError(e); }
   }
 
-  async function showLogs(site: Site) {
-   
-    setLogSite(site);
-    setLogPage(0);
-    setLogs('Log dosyası okunuyor…');
-    try { setLogs(await invoke<string>('read_log', { id: site.id })); }
-    catch (e) { setLogs(String(e)); }
-  }
-
   async function archiveSite(site: Site) {
    
     const accepted = window.confirm(`${site.title} projesini arşivlemek istiyor musunuz?\n\nSite dosyaları arşive taşınacak, veritabanı silinmeyecektir. Ana listeden kaldırılacaktır.`);
@@ -122,7 +110,6 @@ function App() {
       onPower={site => { void runAction(site.id, () => invoke(site.running?'stop_site':'start_site',{id:site.id})); }}
       onArchive={site => { void archiveSite(site); }}
       onTools={(site,tab) => {setToolTab(tab);setToolSite(site);}}
-      onLogs={site => { void showLogs(site); }}
       onError={notifyError}
     />
 
@@ -176,11 +163,7 @@ function App() {
     </div></div>}
 
     {toolSite && <SiteToolkit site={toolSite} initialTab={toolTab} close={() => setToolSite(null)} />}
-    {logSite && <div className="modal-backdrop"><div className="modal log-modal" role="dialog" aria-modal="true" aria-labelledby="log-title"><div className="modal-header"><div><div className="eyebrow">PHP DEVELOPMENT LOG</div><h2 id="log-title">{logSite.title} — PHP logları</h2></div><button className="bare-button" onClick={() => setLogSite(null)} aria-label="Kapat"><X size={20}/></button></div><pre className="log-output">{logs.split('\n').slice(logPage*24,(logPage+1)*24).join('\n')}</pre>
-      <div className="ns-log-pager"><span>{Math.min(logPage*24+1,logs.split('\n').length)}–{Math.min((logPage+1)*24,logs.split('\n').length)} / {logs.split('\n').length} satır</span>
-        <button type="button" disabled={logPage===0} onClick={()=>setLogPage(logPage-1)}>Önceki</button>
-        <button type="button" disabled={(logPage+1)*24>=logs.split('\n').length} onClick={()=>setLogPage(logPage+1)}>Sonraki</button>
-      </div><div className="modal-actions"><button className="outline-btn" onClick={async () => setLogs(await invoke<string>('read_log', { id: logSite.id }))}><RefreshCw size={15}/> Yenile</button><button className="primary-btn" onClick={() => setLogSite(null)}>Kapat</button></div></div></div>}
+
   </div>;
 }
 
