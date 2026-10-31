@@ -98,10 +98,19 @@ fn save_sites(app: &AppHandle, sites: &[Site]) -> Result<(), String> {
 
 fn bundle_runtime(app: &AppHandle) -> Option<PathBuf> {
     let root = app.path().resource_dir().ok()?.join("runtime");
-    if root.join("php/bin/php").is_file() && root.join("tools/wp-cli.phar").is_file()
-        && root.join("mariadb/bin/mariadbd").is_file() {
+    // In a release build, PressForge is standalone: never silently fall back
+    // to host-installed PHP/MariaDB when the package is missing/incomplete.
+    // Development builds may use host tools when no bundled runtime is staged.
+    if !cfg!(debug_assertions) || runtime_has_any_engine(&root) {
         Some(root)
-    } else { None }
+    } else {
+        None
+    }
+}
+
+fn runtime_has_any_engine(root: &Path) -> bool {
+    ["php/bin/php", "tools/wp-cli.phar", "mariadb/bin/mariadbd",
+        "mariadb/bin/mariadb"].iter().any(|name| root.join(name).is_file())
 }
 
 // The portable runtime is kept INSIDE Contents/Resources, never modified in place.
@@ -187,6 +196,21 @@ fn portable_socket(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(private.join("db.sock"))
 }
 
+fn ensure_private_directory(path: &Path) -> Result<(), String> {
+    // MariaDB stores local WordPress credentials and content here.
+    // Do not let a permissive process umask expose database files.
+    if path.is_symlink() {
+        return Err(format!("Veritabanı veri yolu sembolik bağlantı olamaz: {}", path.display()));
+    }
+    fs::create_dir_all(path).map_err(|e| e.to_string())?;
+    #[cfg(unix)] {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 fn ensure_database(app: &AppHandle, state: &AppState) -> Result<(), String> {
     let Some(runtime) = bundle_runtime(app) else { return Ok(()); };
     let server = runtime.join("mariadb/bin/mariadbd");
@@ -203,7 +227,8 @@ fn ensure_database(app: &AppHandle, state: &AppState) -> Result<(), String> {
     }
     let root = data_dir(app)?.join("database");
     let dbdir = root.join("data");
-    fs::create_dir_all(&dbdir).map_err(|e| e.to_string())?;
+    ensure_private_directory(&root)?;
+    ensure_private_directory(&dbdir)?;
     if !dbdir.join("mysql").exists() {
         let args = [
             "--no-defaults".into(),
@@ -428,9 +453,16 @@ fn check_dependencies(app: AppHandle) -> Vec<Dependency> {
         ("MariaDB / MySQL", &["mariadb", "mysql"], &["--version"]),
     ];
     let mut results: Vec<Dependency> = entries.iter().map(|(name, names, flags)| {
-        let found = if *name == "WP-CLI" {
-            bundle_runtime(&app).map(|r| r.join("tools/wp-cli.phar")).or_else(|| find_binary(names))
-        } else { bundled_binary(&app, names).or_else(|| find_binary(names)) };
+        let found = if let Some(runtime) = bundle_runtime(&app) {
+            if *name == "WP-CLI" {
+                let phar = runtime.join("tools/wp-cli.phar");
+                phar.is_file().then_some(phar)
+            } else {
+                bundled_binary(&app, names)
+            }
+        } else {
+            find_binary(names)
+        };
         let probe = found.as_ref().and_then(|b| {
             if *name == "WP-CLI" && bundle_runtime(&app).is_some() {
                 wp(&app, &flags.iter().map(|s| s.to_string()).collect::<Vec<_>>(), None).ok()
@@ -447,7 +479,12 @@ fn check_dependencies(app: AppHandle) -> Vec<Dependency> {
             path: found.map(|p| p.display().to_string()).unwrap_or_default(),
         }
     }).collect();
-    if let Some(php) = bundled_binary(&app, &["php"]).or_else(|| find_binary(&["php"])) {
+    let php_candidate = if bundle_runtime(&app).is_some() {
+        bundled_binary(&app, &["php"])
+    } else {
+        find_binary(&["php"])
+    };
+    if let Some(php) = php_candidate {
         let modules = run_app_capture(&app, &php, &["-m".into()], None).unwrap_or_default().to_lowercase();
         results.push(Dependency {
             name: "PHP mysqli".into(),
@@ -672,6 +709,41 @@ fn open_site(app: AppHandle, id: String, target: String) -> Result<(), String> {
     let status = Command::new("/usr/bin/open").arg(destination).status().map_err(|e| e.to_string())?;
     if !status.success() { return Err("macOS open komutu başarısız".into()); }
     Ok(())
+}
+
+#[cfg(test)]
+mod runtime_security_tests {
+    use super::*;
+    #[test]
+    fn missing_or_partial_engine_is_detectable() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(!runtime_has_any_engine(root.path()));
+        fs::create_dir_all(root.path().join("php/bin")).unwrap();
+        fs::write(root.path().join("php/bin/php"), "test").unwrap();
+        assert!(runtime_has_any_engine(root.path()));
+    }
+    #[cfg(unix)]
+    #[test]
+    fn database_directory_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("database");
+        fs::create_dir_all(&data).unwrap();
+        fs::set_permissions(&data, fs::Permissions::from_mode(0o755)).unwrap();
+        ensure_private_directory(&data).unwrap();
+        assert_eq!(fs::metadata(&data).unwrap().permissions().mode() & 0o777, 0o700);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_database_directory() {
+        use std::os::unix::fs::symlink;
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target");
+        fs::create_dir(&target).unwrap();
+        let link = root.path().join("database");
+        symlink(&target, &link).unwrap();
+        assert!(ensure_private_directory(&link).is_err());
+    }
 }
 
 #[tauri::command]
