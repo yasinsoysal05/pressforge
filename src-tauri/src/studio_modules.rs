@@ -12,6 +12,8 @@ pub struct StudioModule {
     status: &'static str,
     version: String,
     description: &'static str,
+    toggleable: bool,
+    enabled: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -41,12 +43,51 @@ fn mod_entry(
     StudioModule {
         id, label, group,
         status: if !available { "planned" } else if enabled { "ready" } else { "missing" },
-        description, version,
+        description, version, toggleable: matches!(id, "extensions" | "snapshots"), enabled: true,
     }
 }
 
+fn module_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(super::data_dir(app)?.join("modules.json"))
+}
+
+fn read_module_settings(app: &AppHandle) -> Result<HashMap<String, bool>, String> {
+    let path = module_settings_path(app)?;
+    if !path.exists() { return Ok(HashMap::new()); }
+    let content = fs::read(path).map_err(|e| e.to_string())?;
+    serde_json::from_slice(&content)
+        .map_err(|_| "Modül ayar dosyası bozuk; hiçbir modül işlemi yapılmadı".to_owned())
+}
+
+fn enabled_module(app: &AppHandle, module: &str) -> Result<(), String> {
+    if !read_module_settings(app)?.get(module).copied().unwrap_or(true) {
+        return Err(format!("{module} modülü Modül Merkezi'nden devre dışı bırakılmış"));
+    }
+    Ok(())
+}
+
 #[tauri::command]
-pub fn list_studio_modules(app: AppHandle) -> Vec<StudioModule> {
+pub fn set_studio_module_enabled(
+    app: AppHandle, state: State<'_, AppState>, module_id: String, enabled: bool,
+) -> Result<(), String> {
+    if !matches!(module_id.as_str(), "extensions" | "snapshots") {
+        return Err("Yalnızca isteğe bağlı site modülleri açılıp kapatılabilir".into());
+    }
+    let _lock = state.operations.lock().map_err(|e| e.to_string())?;
+    let mut settings = read_module_settings(&app)?;
+    settings.insert(module_id, enabled);
+    let path = module_settings_path(&app)?;
+    let parent = path.parent().ok_or("Modül ayar dizini bulunamadı")?;
+    super::ensure_private_directory(parent)?;
+    let tmp = parent.join(format!("modules-{}.tmp", Uuid::new_v4().simple()));
+    fs::write(&tmp, serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_studio_modules(app: AppHandle) -> Result<Vec<StudioModule>, String> {
     let deps = super::check_dependencies(app.clone());
     let ok = |name: &str| deps.iter().find(|d| d.name == name).is_some_and(|d| d.installed);
     let vers = |name: &str| deps.iter().find(|d| d.name == name).map_or_else(
@@ -67,7 +108,8 @@ pub fn list_studio_modules(app: AppHandle) -> Vec<StudioModule> {
     } else {
         super::find_binary(&["mariadb-dump", "mysqldump"]).is_some()
     };
-    vec![
+    let settings = read_module_settings(&app)?;
+    let mut modules = vec![
         mod_entry("php", "PHP Engine", "runtime", php, true,
             "Sistem/bundle PHP sürümü ve mysqli sürücüsü", vers("PHP")),
         mod_entry("mariadb", "MariaDB", "runtime", db, true,
@@ -100,7 +142,14 @@ pub fn list_studio_modules(app: AppHandle) -> Vec<StudioModule> {
             "Seçimle eşitleme; yayın öncesi yedek ve onay", String::new()),
         mod_entry("diagnostics", "AI Diagnostics", "integration", false, false,
             "WordPress/Elementor uyumluluk ve performans analizi", String::new()),
-    ]
+    ];
+    for item in &mut modules {
+        if item.toggleable {
+            item.enabled = settings.get(item.id).copied().unwrap_or(true);
+            if !item.enabled { item.status = "disabled"; }
+        }
+    }
+    Ok(modules)
 }
 
 fn validated_site(app: &AppHandle, id: &str) -> Result<(Site, PathBuf), String> {
@@ -164,6 +213,7 @@ pub async fn list_site_extensions(
 ) -> Result<Vec<WpExtension>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         validate_kind(&kind)?;
+        enabled_module(&app, "extensions")?;
         let state = app.state::<AppState>();
         let _lock = state.operations.lock().map_err(|e| e.to_string())?;
         super::ensure_database(&app, &state)?;
@@ -182,6 +232,7 @@ pub async fn manage_site_extension(
 ) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         validate_kind(&kind)?;
+        enabled_module(&app, "extensions")?;
         validate_slug(&slug)?;
         if !(action == "activate" || action == "deactivate" && kind == "plugin") {
             return Err("Desteklenmeyen eklenti/tema işlemi".into());
@@ -250,6 +301,7 @@ fn snapshots_root(app: &AppHandle, site: &str) -> Result<PathBuf, String> {
 #[tauri::command]
 pub async fn create_site_snapshot(app: AppHandle, id: String) -> Result<SiteSnapshot, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        enabled_module(&app, "snapshots")?;
         let state = app.state::<AppState>();
         let _lock = state.operations.lock().map_err(|e| e.to_string())?;
         let (site, public) = validated_site(&app, &id)?;
@@ -297,6 +349,7 @@ pub async fn create_site_snapshot(app: AppHandle, id: String) -> Result<SiteSnap
 
 #[tauri::command]
 pub fn list_site_snapshots(app: AppHandle, id: String) -> Result<Vec<SiteSnapshot>, String> {
+    enabled_module(&app, "snapshots")?;
     let (_site, _) = validated_site(&app, &id)?;
     let root = snapshots_root(&app, &id)?;
     if !root.exists() { return Ok(Vec::new()); }
@@ -322,6 +375,7 @@ pub fn list_site_snapshots(app: AppHandle, id: String) -> Result<Vec<SiteSnapsho
 
 #[tauri::command]
 pub fn open_site_snapshots_folder(app: AppHandle, id: String) -> Result<(), String> {
+    enabled_module(&app, "snapshots")?;
     let (_site, _public) = validated_site(&app, &id)?;
     let folder = snapshots_root(&app, &id)?;
     super::ensure_private_directory(&folder)?;
