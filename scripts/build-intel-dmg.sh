@@ -28,5 +28,10 @@ npm ci --no-audit --no-fund
 export MACOSX_DEPLOYMENT_TARGET=13.0
 npm run tauri build -- --target x86_64-apple-darwin
 
+# Stage validation alone is insufficient: ensure the FINAL Tauri .app really
+# contains relocatable Intel PHP/MariaDB and the pinned WP-CLI PHAR.
+python3 scripts/check-native-macos-app.py
+python3 scripts/verify-app-bundle-macos.py
+
 find src-tauri/target/x86_64-apple-darwin/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print
 printf '\n[UYARI] Bu DMG kod imzalama/notarization olmadan kamu dağıtımı için hazır değildir.\n'
