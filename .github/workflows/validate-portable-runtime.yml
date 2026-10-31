@@ -1,8 +1,8 @@
 name: Validate portable PHP MariaDB Intel macOS (experimental)
 
+# Manual diagnostic only: hosted macos-15-intel bottles are known to require
+# macOS 14+, so they cannot produce a Ventura 13-compatible runtime.
 on:
-  push:
-    branches: [feat/portable-runtime-validation]
   workflow_dispatch:
 
 permissions:
