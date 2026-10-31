@@ -142,6 +142,15 @@ def main() -> None:
                                    "--admin_email=pressforge@example.invalid",
                                    "--skip-email", "--prompt=admin_password"],
                          env, input_text=admin_password + "\n", timeout=90)
+            # WP-CLI may append the physical installation directory to siteurl.
+            # The PressForge HTTP server uses --path as its document root.
+            for option in ("siteurl", "home"):
+                exec_checked(prefix + ["option", "update", option, url,
+                                       f"--path={public}", "--quiet"], env, timeout=25)
+                actual = exec_checked(prefix + ["option", "get", option,
+                                               f"--path={public}"], env, timeout=25).strip().rstrip("/")
+                if actual != url:
+                    raise RuntimeError(f"WordPress {option} does not match the localhost document root")
             print("[5/6] Launch PHP loopback HTTP site", flush=True)
             with php_log.open("wb") as handle:
                 php_process = subprocess.Popen(

@@ -130,9 +130,18 @@ fn bundled_binary(app: &AppHandle, names: &[&str]) -> Option<PathBuf> {
     None
 }
 
+fn requires_bundled_runtime(release_build: bool, staged_engine: bool) -> bool {
+    release_build || staged_engine
+}
+
+fn bundled_engine_required(app: &AppHandle) -> bool {
+    requires_bundled_runtime(!cfg!(debug_assertions), bundle_runtime(app).is_some())
+}
+
 fn app_binary(app: &AppHandle, names: &[&str]) -> Result<PathBuf, String> {
-    if bundle_runtime(app).is_some() {
-        // Never fall back to a host database/PHP binary if a runtime is bundled.
+    if bundled_engine_required(app) {
+        // Fail closed even if Tauri cannot resolve the app resource directory
+        // in a release build. Never fall back to a host-installed PHP/MariaDB.
         return bundled_binary(app, names).ok_or_else(|| {
             format!("Paketlenmiş çalışma ortamında komut eksik: {}", names.join(" / "))
         });
@@ -325,7 +334,7 @@ fn run_capture(program: &Path, args: &[String], stdin_data: Option<&str>) -> Res
 }
 
 fn mysql_exec(app: &AppHandle, state: &AppState, admin: &NewSite, sql: &str) -> Result<(), String> {
-    if bundle_runtime(app).is_some() {
+    if bundled_engine_required(app) {
         ensure_database(app, state)?;
         let mariadb = app_binary(app, &["mariadb", "mysql"])?;
         let args = vec!["--no-defaults".into(), format!("--socket={}", portable_socket(app)?.display()),
@@ -408,6 +417,11 @@ fn rollback_database(app: &AppHandle, state: &AppState, new: &NewSite, name: &st
 }
 
 fn wp(app: &AppHandle, args: &[String], input: Option<&str>) -> Result<String, String> {
+    // Release binaries must NEVER invoke a system-installed WP-CLI if the
+    // Resources directory is inaccessible or damaged.
+    if !cfg!(debug_assertions) && bundle_runtime(app).is_none() {
+        return Err("Paketlenmiş çalışma ortamına erişilemiyor; PressForge uygulama kaynakları eksik.".to_string());
+    }
     // WP-CLI --prompt may echo a reconstructed command including password values
     // to stdout even when the password came from stdin. Never forward captured
     // output or error details from these invocations to UI, logs or telemetry.
@@ -447,10 +461,8 @@ fn site_view(site: Site, state: &AppState) -> Result<SiteView, String> {
 
 #[tauri::command]
 fn runtime_mode(app: AppHandle) -> &'static str {
-    // Runtime mode must not be inferred from whichever binaries happen to work.
-    // In a release build, missing bundled binaries are actionable errors,
-    // not a reason to prompt end users to install system tools.
-    if bundle_runtime(&app).is_some() { "bundled" } else { "development" }
+    // Even if macOS resource lookup fails, a release build is still bundled.
+    if bundled_engine_required(&app) { "bundled" } else { "development" }
 }
 
 #[tauri::command]
@@ -461,10 +473,12 @@ fn check_dependencies(app: AppHandle) -> Vec<Dependency> {
         ("MariaDB / MySQL", &["mariadb", "mysql"], &["--version"]),
     ];
     let mut results: Vec<Dependency> = entries.iter().map(|(name, names, flags)| {
-        let found = if let Some(runtime) = bundle_runtime(&app) {
+        let found = if bundled_engine_required(&app) {
             if *name == "WP-CLI" {
-                let phar = runtime.join("tools/wp-cli.phar");
-                phar.is_file().then_some(phar)
+                bundle_runtime(&app).and_then(|runtime| {
+                    let phar = runtime.join("tools/wp-cli.phar");
+                    phar.is_file().then_some(phar)
+                })
             } else {
                 bundled_binary(&app, names)
             }
@@ -487,7 +501,7 @@ fn check_dependencies(app: AppHandle) -> Vec<Dependency> {
             path: found.map(|p| p.display().to_string()).unwrap_or_default(),
         }
     }).collect();
-    let php_candidate = if bundle_runtime(&app).is_some() {
+    let php_candidate = if bundled_engine_required(&app) {
         bundled_binary(&app, &["php"])
     } else {
         find_binary(&["php"])
@@ -503,7 +517,7 @@ fn check_dependencies(app: AppHandle) -> Vec<Dependency> {
     } else {
         results.push(Dependency { name: "PHP mysqli".into(), installed: false, version: String::new(), path: String::new() });
     }
-    if bundle_runtime(&app).is_some() {
+    if bundled_engine_required(&app) {
         // The client CLI may be installed even when the actual server binary is
         // absent. Do not let the UI claim "ready" or offer site creation then.
         let daemon = bundled_binary(&app, &["mariadbd"]);
@@ -529,10 +543,10 @@ fn create_site_impl(app: &AppHandle, state: &AppState, new: NewSite) -> Result<S
     validate(&new)?;
     // Preflight before creating anything on disk.
     let _ = app_binary(app, &["php"])?;
-    if bundle_runtime(app).is_none() { let _ = binary(&["wp"])?; }
+    if !bundled_engine_required(app) { let _ = binary(&["wp"])?; }
     let _ = app_binary(app, &["mariadb", "mysql"])?;
     mysql_exec(app, state, &new, "SELECT 1;\n").map_err(|e| {
-        if bundle_runtime(app).is_some() {
+        if bundled_engine_required(app) {
             format!("Paketlenmiş MariaDB sunucusu veya socket bağlantısı başarısız: {e}")
         } else {
             format!("Yerel MariaDB bağlantısı başarısız. Sunucu servisinin çalıştığını ve kullanıcı bilgilerini kontrol edin. {e}")
@@ -747,6 +761,14 @@ fn open_site(app: AppHandle, id: String, target: String) -> Result<(), String> {
 #[cfg(test)]
 mod runtime_security_tests {
     use super::*;
+    #[test]
+    fn release_runtime_must_never_fall_back() {
+        // Test the same helper used in runtime selection, in all build profiles.
+        assert!(requires_bundled_runtime(true, false));
+        assert!(requires_bundled_runtime(true, true));
+        assert!(requires_bundled_runtime(false, true));
+        assert!(!requires_bundled_runtime(false, false));
+    }
     #[test]
     fn missing_or_partial_engine_is_detectable() {
         let root = tempfile::tempdir().unwrap();
