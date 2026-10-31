@@ -93,3 +93,30 @@ Even a development DMG is now rejected unless `sw_vers` reports **Intel macOS 13
 - A Mach-O dependency lacks the Intel x86_64 slice, requires macOS newer than 13, or points to an unbundled dylib.
 
 The bundled-resource check is in `scripts/verify-app-bundle-macos.py`. It **does not** replace the real Ventura 13 device test, the Tauri UI test, a clean-machine test, Apple signing/notarization or complete third-party license review. A passing developer build is not a public release.
+
+## Optional self-hosted Intel Ventura 13 GitHub acceptance
+
+The `.github/workflows/ventura13-portable-acceptance.yml` workflow is **manual only**.
+It must run on a user-controlled, physically verified Intel Ventura 13.x runner
+registered with GitHub Actions labels `self-hosted`, `macOS`, `X64`,
+and the custom label `ventura-13`.
+
+It does not run on pull requests, preventing external PR code from executing
+on a machine with developer credentials. This workflow exists in a draft
+branch and must be reviewed and made available on the repository's default
+branch before it can be manually dispatched from GitHub Actions.
+
+On a properly provisioned runner, it checks actual macOS 13 and x86_64,
+compiles pinned PHP/MariaDB source code, checks WP-CLI SHA-512, stages
+the runtime, boots a disposable MariaDB server, installs real WordPress,
+tests the home/login pages, builds a development DMG, mounts and audits
+the finished DMG, and uploads a time-limited unsigned test artifact with
+its SHA-256.
+
+This is a **developer acceptance test, not public distribution**.
+Only a separate clean Ventura Mac installation test, legal/license
+review, Apple Developer ID signing, notarization and Gatekeeper
+assessment can authorize a public release.
+
+The DMG builder now checks the shipped mounted .app directly; Tauri may
+remove its intermediate `bundle/macos/*.app` after creating the DMG.
