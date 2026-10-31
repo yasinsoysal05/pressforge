@@ -7,6 +7,14 @@ if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "x86_64" ]]; then
   exit 1
 fi
 
+# A distributable Ventura DMG must be built and exercised on Ventura,
+# not on a newer macOS runner with incompatible system libraries.
+host_version="$(sw_vers -productVersion)"
+case "$host_version" in
+  13.*) ;;
+  *) echo "[HATA] Ventura hedefi için Intel macOS 13.x gerekir; mevcut: $host_version" >&2; exit 1;;
+esac
+
 for bin in node npm cargo rustc python3; do
   command -v "$bin" >/dev/null || { echo "[HATA] Build ortamında $bin eksik" >&2; exit 1; }
 done
@@ -24,6 +32,9 @@ fi
 python3 scripts/verify-bundled-runtime.py
 python3 scripts/audit-runtime-macos.py
 python3 scripts/smoke-mariadb-macos.py
+# A successful MariaDB boot is not enough: install an actual WordPress site,
+# fetch its homepage and verify WP login before creating even a dev DMG.
+python3 scripts/smoke-wordpress-macos.py
 npm ci --no-audit --no-fund
 export MACOSX_DEPLOYMENT_TARGET=13.0
 npm run tauri build -- --target x86_64-apple-darwin
