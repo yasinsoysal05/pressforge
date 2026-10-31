@@ -465,9 +465,9 @@ mod tests {
     use super::*;
     #[test]
     fn table_names_must_be_safe_and_bounded() {
-        assert_eq!(parse_database_tables("wp_posts\\nwp_options\\nwp_posts\\n").unwrap(),
+        assert_eq!(parse_database_tables("wp_posts\nwp_options\nwp_posts\n").unwrap(),
             vec!["wp_posts".to_string(), "wp_options".to_string()]);
-        for unsafe_input in ["wp_posts; DROP TABLE users", "wp_a/../../", "wp_foo\\u{0}bar"] {
+        for unsafe_input in ["wp_posts; DROP TABLE users", "wp_a/../../", "wp_foo\u{0}bar"] {
             assert!(parse_database_tables(unsafe_input).is_err());
         }
     }
