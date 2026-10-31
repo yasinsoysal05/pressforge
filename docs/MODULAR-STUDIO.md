@@ -13,8 +13,17 @@ PressForge is a local-first modular WordPress desktop application built with Tau
 | Plugins / Themes | List, activate and deactivate with an allowlisted WP-CLI command and validated slug |
 | Snapshots | Owner-private site file copy plus mandatory SQL database dump |
 | PHP Logs | Per-site local error log viewer |
+| Database Inspector | Read-only WordPress table listing and column schema; never accepts arbitrary SQL; validates selected table against live registered WordPress database tables |
 
 Module Center reports ready, missing, disabled and planned. Optional extensions and snapshot modules can be switched on/off; the backend enforces those settings and persists them into Application Support/modules.json. Core PHP/MariaDB/WP-CLI engines cannot be disabled independently while other modules need them.
+
+## Database Inspector security model
+
+- Uses the site's WP-CLI database connection with `wp db tables --format=list --all-tables-with-prefix` and `wp db columns ... --format=json`.
+- Selected table names must be returned from the same site's live table listing; no user-supplied SQL, shell interpolation, ALTER/DROP/UPDATE or remote connection.
+- Validates table identifiers and caps returned table and schema sizes.
+- Includes read-only WordPress integration checks in CI and Rust unit tests.
+- This tool is a database **schema inspector**, not a phpMyAdmin replacement or a full SQL query console.
 
 ## Snapshot safety
 
