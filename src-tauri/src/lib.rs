@@ -383,14 +383,26 @@ fn rollback_database(app: &AppHandle, state: &AppState, new: &NewSite, name: &st
 }
 
 fn wp(app: &AppHandle, args: &[String], input: Option<&str>) -> Result<String, String> {
-    if let Some(runtime) = bundle_runtime(app) {
+    // WP-CLI --prompt may echo a reconstructed command including password values
+    // to stdout even when the password came from stdin. Never forward captured
+    // output or error details from these invocations to UI, logs or telemetry.
+    let private = input.is_some();
+    let result = if let Some(runtime) = bundle_runtime(app) {
         let php = runtime.join("php/bin/php");
         let mut wp_args = vec![runtime.join("tools/wp-cli.phar").display().to_string()];
         wp_args.extend_from_slice(args);
-        return run_app_capture(app, &php, &wp_args, input);
+        run_app_capture(app, &php, &wp_args, input)
+    } else {
+        let exe = binary(&["wp"])?;
+        run_capture(&exe, args, input)
+    };
+    if private {
+        result.map(|_| String::new()).map_err(|_| {
+            "WP-CLI gizli parola içeren kurulum adımı başarısız oldu. Parola güvenliği için komut çıktısı gösterilmiyor.".to_string()
+        })
+    } else {
+        result
     }
-    let exe = binary(&["wp"])?;
-    run_capture(&exe, args, input)
 }
 
 fn site_url(port: u16) -> String {
