@@ -2,7 +2,7 @@ name: Portable runtime script syntax
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/ventura-source-build]
   pull_request:
     branches: [main]
 
