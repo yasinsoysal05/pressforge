@@ -57,6 +57,16 @@ pub fn list_studio_modules(app: AppHandle) -> Vec<StudioModule> {
     let db = ok("MariaDB / MySQL") && (
         !super::bundled_engine_required(&app) || ok("MariaDB server")
     );
+    // Snapshots need an actual SQL dump executable. The DB client alone does
+    // not guarantee that a full backup can be created.
+    let sql_dump = if super::bundled_engine_required(&app) {
+        super::bundle_runtime(&app).is_some_and(|root| {
+            root.join("mariadb/bin/mariadb-dump").is_file()
+                || root.join("mariadb/bin/mysqldump").is_file()
+        })
+    } else {
+        super::find_binary(&["mariadb-dump", "mysqldump"]).is_some()
+    };
     vec![
         mod_entry("php", "PHP Engine", "runtime", php, true,
             "Sistem/bundle PHP sürümü ve mysqli sürücüsü", vers("PHP")),
@@ -68,7 +78,7 @@ pub fn list_studio_modules(app: AppHandle) -> Vec<StudioModule> {
             "127.0.0.1 üzerinde siteye özel port; dışa açık değil", String::new()),
         mod_entry("extensions", "Plugin & Theme Manager", "site", php && wpcli && db, true,
             "Eklenti/tema listele, etkinleştir veya devre dışı bırak", String::new()),
-        mod_entry("snapshots", "Snapshots", "site", php && wpcli && db, true,
+        mod_entry("snapshots", "Snapshots", "site", php && wpcli && db && sql_dump, true,
             "Site dosyaları + SQL dump içeren yerel snapshot", String::new()),
         mod_entry("logs", "PHP Logs", "site", true, true,
             "Siteye özel hata logu görüntüleme", String::new()),
