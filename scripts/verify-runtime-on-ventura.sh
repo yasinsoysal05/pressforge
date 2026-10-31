@@ -33,6 +33,12 @@ echo "[INFO] Auditing all Mach-O architectures, minOS versions, dylib links"
 python3 scripts/audit-runtime-macos.py
 echo "[INFO] Starting isolated MariaDB instance and verifying socket SQL"
 python3 scripts/smoke-mariadb-macos.py
+if [[ "${PRESSFORGE_SKIP_WORDPRESS_E2E:-0}" == "1" ]]; then
+  echo '[WARN] WordPress end-to-end smoke test explicitly skipped: NOT distribution-ready.'
+else
+  echo '[INFO] Installing temporary WordPress and verifying local HTTP using bundled runtime'
+  python3 scripts/smoke-wordpress-macos.py
+fi
 
 echo "[OK] Runtime validation passed on Intel Ventura $VERSION"
 echo "[NEXT] Run bash scripts/build-intel-dmg.sh on the SAME host."
