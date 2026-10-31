@@ -65,9 +65,12 @@ def macho(file):
 
 def versions_ok(file):
     info = run('file', '-b', str(file))
-    if 'x86_64' not in info and 'universal' not in info.lower():
-        die(f'Intel x86_64 olmayan Mach-O: {file} ({info})')
-    lines = run('otool', '-l', str(file)).splitlines()
+    # Universal/fat Mach-O may contain multiple slices: only the Intel slice
+    # determines Ventura compatibility for this x86_64-only release.
+    if subprocess.run(['lipo', '-verify_arch', 'x86_64', str(file)],
+                      capture_output=True, check=False).returncode:
+        die(f'Intel x86_64 dilimi eksik: {file} ({info})')
+    lines = run('otool', '-arch', 'x86_64', '-l', str(file)).splitlines()
     for i, row in enumerate(lines):
         if row.strip() in ('cmd LC_BUILD_VERSION', 'cmd LC_VERSION_MIN_MACOSX'):
             key = 'minos' if row.strip() == 'cmd LC_BUILD_VERSION' else 'version'
@@ -81,12 +84,12 @@ def versions_ok(file):
 
 
 def deps(file):
-    lines = run('otool', '-L', str(file)).splitlines()[1:]
+    lines = run('otool', '-arch', 'x86_64', '-L', str(file)).splitlines()[1:]
     return [r.strip().split(' (', 1)[0] for r in lines if r.strip()]
 
 
 def rpaths(file):
-    lines = run('otool', '-l', str(file)).splitlines()
+    lines = run('otool', '-arch', 'x86_64', '-l', str(file)).splitlines()
     found=[]
     for i,line in enumerate(lines):
         if line.strip() == 'cmd LC_RPATH':
@@ -225,7 +228,7 @@ def main():
         if file in visited: continue
         visited.add(file)
         versions_ok(file)
-        install_id=run('otool','-D',str(file),check=False).splitlines()
+        install_id=run('otool','-arch','x86_64','-D',str(file),check=False).splitlines()
         own_id=install_id[1].strip() if len(install_id)>1 else ''
         for dep in deps(file):
             # otool -L on a dylib contains its own install-name ID as the first row.
@@ -241,7 +244,7 @@ def main():
                 run('install_name_tool','-change',dep,changed,str(file))
                 fixups+=1
         # Clear any dylib install-name ID which references a build machine path.
-        install_id=run('otool','-D',str(file),check=False).splitlines()
+        install_id=run('otool','-arch','x86_64','-D',str(file),check=False).splitlines()
         if len(install_id)>1 and install_id[1].strip():
             run('install_name_tool','-id','@rpath/'+file.name,str(file))
     # Runtime PHP must supply WordPress MySQL driver without depending on global php.ini.
