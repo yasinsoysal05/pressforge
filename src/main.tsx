@@ -83,10 +83,13 @@ function App() {
     e.preventDefault();
     if (!allReady || working) return;
     await runAction('create', async () => {
-      await invoke('create_site', { newSite: form });
+      const created = await invoke<Site>('create_site', { newSite: form });
       setShowForm(false);
       setForm({ ...initialForm });
-    }, 'Yeni WordPress siteniz oluşturuldu.');
+      setNotice(created.running
+        ? { kind: 'success', message: 'WordPress sitesi oluşturuldu ve PHP sunucusu başlatıldı.' }
+        : { kind: 'error', message: 'WordPress sitesi oluşturuldu, ancak PHP sunucusu çalışmıyor. PHP loglarını inceleyin veya siteyi tekrar başlatın.' });
+    });
   }
 
   async function openSite(site: Site, target: 'website' | 'admin' | 'folder') {
@@ -127,9 +130,9 @@ function App() {
     </aside>
 
     <main className="main">
-      <div className="topbar"><div className="crumb">Workspace <ChevronRight size={13} /> <strong>Sitelerim</strong></div><div className="top-note"><span className="green-dot" /> LOCAL ENVIRONMENT <span className="top-divider"/> <Code2 size={17}/></div></div>
+      <div className="topbar"><div className="crumb">Workspace <ChevronRight size={13} /> <strong>Sitelerim</strong></div><div className="top-note">{allReady ? <span className="green-dot"/> : <ShieldCheck size={14}/>} {allReady ? 'LOCAL ENVIRONMENT READY' : 'RUNTIME NOT READY'} <span className="top-divider"/> <Code2 size={17}/></div></div>
       <section className="main-content">
-        <div className="hero"><div className="hero-text"><div className="eyebrow"><span className="eyebrow-circle" /> WORDPRESS DEVELOPMENT ENVIRONMENT</div><h1>Kodla. Geliştir.<br/><em>Özgürce üret.</em></h1><p>WordPress projelerini yerel ortamında oluştur, çalıştır ve tek bir yerden yönet. Karmaşık sunucu ayarlarına gerek yok.</p><button className="primary-btn" onClick={() => setShowForm(true)}><Plus size={19}/> Yeni WordPress sitesi <ArrowRight size={17}/></button></div><div className="hero-decor" aria-hidden="true"><div className="orb"><div className="orb-inner"><Layers3 size={70}/></div></div><div className="floating-pill pill-top"><span className="green-dot"/> Server ready</div><div className="floating-pill pill-bottom"><TerminalSquare size={14}/> PHP / MySQL</div></div></div>
+        <div className="hero"><div className="hero-text"><div className="eyebrow"><span className="eyebrow-circle" /> WORDPRESS DEVELOPMENT ENVIRONMENT</div><h1>Kodla. Geliştir.<br/><em>Özgürce üret.</em></h1><p>WordPress projelerini yerel ortamında oluştur, çalıştır ve tek bir yerden yönet. Karmaşık sunucu ayarlarına gerek yok.</p><button className="primary-btn" onClick={() => setShowForm(true)}><Plus size={19}/> Yeni WordPress sitesi <ArrowRight size={17}/></button></div><div className="hero-decor" aria-hidden="true"><div className="orb"><div className="orb-inner"><Layers3 size={70}/></div></div><div className="floating-pill pill-top">{allReady ? <><span className="green-dot"/> Runtime ready</> : <><ShieldCheck size={14}/> Runtime incomplete</>}</div><div className="floating-pill pill-bottom"><TerminalSquare size={14}/> PHP / MySQL</div></div></div>
         <div className="metrics"><div className="metric"><div className="metric-icon blue"><HardDrive size={19}/></div><div><span>Toplam proje</span><strong>{sites.length.toString().padStart(2,'0')}</strong></div></div><div className="metric"><div className="metric-icon green"><Activity size={19}/></div><div><span>Çalışan siteler</span><strong>{running.toString().padStart(2,'0')}</strong></div></div><div className="metric"><div className="metric-icon violet"><Database size={19}/></div><div><span>Yerel veritabanı</span><strong>{sites.length.toString().padStart(2,'0')}</strong></div></div></div>
 
         <div className="section-heading"><div><h2>Projelerim <span>{sites.length}</span></h2><p>Tüm WordPress çalışma alanların</p></div><div className="actions"><div className="search-box"><Search size={17}/><input aria-label="Projelerde ara" placeholder="Projelerde ara..." value={search} onChange={e => setSearch(e.target.value)}/></div><button title="Yenile" aria-label="Listeyi yenile" className="icon-button" onClick={() => runAction('refresh', refresh)} disabled={!!working}><RefreshCw size={18} className={working === 'refresh' ? 'spin' : ''} /></button></div></div>
