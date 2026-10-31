@@ -130,8 +130,12 @@ fn bundled_binary(app: &AppHandle, names: &[&str]) -> Option<PathBuf> {
     None
 }
 
+fn requires_bundled_runtime(release_build: bool, staged_engine: bool) -> bool {
+    release_build || staged_engine
+}
+
 fn bundled_engine_required(app: &AppHandle) -> bool {
-    !cfg!(debug_assertions) || bundle_runtime(app).is_some()
+    requires_bundled_runtime(!cfg!(debug_assertions), bundle_runtime(app).is_some())
 }
 
 fn app_binary(app: &AppHandle, names: &[&str]) -> Result<PathBuf, String> {
@@ -759,15 +763,11 @@ mod runtime_security_tests {
     use super::*;
     #[test]
     fn release_runtime_must_never_fall_back() {
-        // Enforce the intended invariant independent of this test binary's
-        // build profile; release and debug must be distinguishable.
-        fn requires_bundle(release: bool, staged: bool) -> bool {
-            release || staged
-        }
-        assert!(requires_bundle(true, false));
-        assert!(requires_bundle(true, true));
-        assert!(requires_bundle(false, true));
-        assert!(!requires_bundle(false, false));
+        // Test the same helper used in runtime selection, in all build profiles.
+        assert!(requires_bundled_runtime(true, false));
+        assert!(requires_bundled_runtime(true, true));
+        assert!(requires_bundled_runtime(false, true));
+        assert!(!requires_bundled_runtime(false, false));
     }
     #[test]
     fn missing_or_partial_engine_is_detectable() {
