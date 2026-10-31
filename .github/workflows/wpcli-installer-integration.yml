@@ -84,6 +84,23 @@ jobs:
               assert all(isinstance(item.get("name"),str) for item in data), filename
           print("[OK] WP-CLI JSON plugin/theme lists")
           PY
+          # Exercise the new read-only Database Inspector allowlist commands.
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" db tables --format=list \
+            --all-tables-with-prefix --skip-plugins --skip-themes --skip-packages \
+            --quiet > "$tmp/tables.txt"
+          test -s "$tmp/tables.txt"
+          db_table="$(head -n 1 "$tmp/tables.txt")"
+          [[ "$db_table" =~ ^[a-zA-Z0-9_]+$ ]] || exit 1
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" db columns "$db_table" \
+            --format=json --skip-plugins --skip-themes --skip-packages \
+            --quiet > "$tmp/columns.json"
+          python3 - "$tmp/columns.json" <<'PY'
+          import json, sys
+          rows=json.load(open(sys.argv[1]))
+          assert isinstance(rows,list) and len(rows)>0
+          assert all(isinstance(row,dict) and ('Field' in row or 'field' in row) for row in rows)
+          print('[OK] Read-only WordPress DB tables and column schema')
+          PY
           php /tmp/pressforge-wp-cli.phar --path="$tmp" cache flush --quiet
           php /tmp/pressforge-wp-cli.phar --path="$tmp" rewrite flush --quiet
           # Core checksum verification is a DIAGNOSTIC rather than a
