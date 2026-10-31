@@ -39,6 +39,7 @@ function IconMark({ size = 40 }: { size?: number }) {
 function App() {
   const [sites, setSites] = useState<Site[]>([]);
   const [deps, setDeps] = useState<Dependency[]>([]);
+  const [runtimeMode, setRuntimeMode] = useState<'bundled' | 'development' | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState('');
   const [search, setSearch] = useState('');
@@ -50,11 +51,13 @@ function App() {
   const [menu, setMenu] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [sitesResult, depResult] = await Promise.all([
+    const [sitesResult, depResult, modeResult] = await Promise.all([
       invoke<Site[]>('list_sites'), invoke<Dependency[]>('check_dependencies'),
+      invoke<'bundled' | 'development'>('runtime_mode'),
     ]);
     setSites(sitesResult);
     setDeps(depResult);
+    setRuntimeMode(modeResult);
   }, []);
 
   useEffect(() => {
@@ -64,7 +67,7 @@ function App() {
 
   const notifyError = (e: unknown) => setNotice({ kind: 'error', message: String(e) });
   const allReady = deps.length > 0 && deps.every(d => d.installed);
-  const bundledRuntime = deps.some(d => d.installed && (d.path.includes('/Resources/runtime/') || d.path.includes('/resources/runtime/')));
+  const bundledRuntime = runtimeMode === 'bundled';
   const running = sites.filter(s => s.running).length;
   const visibleSites = useMemo(() => sites.filter(s =>
     `${s.title} ${s.url} ${s.adminUser}`.toLowerCase().includes(search.toLowerCase())), [sites, search]);
@@ -143,7 +146,9 @@ function App() {
           <div className="site-footer"><button className="site-open" disabled={!site.running} onClick={() => openSite(site,'website')}><ExternalLink size={15}/> Siteyi aç</button><button className="site-open" disabled={!site.running} onClick={() => openSite(site,'admin')}>WP Admin</button><button className={`site-power ${site.running ? 'stop' : 'start'}`} disabled={!!working} title={site.running ? 'Durdur' : 'Başlat'} aria-label={site.running ? 'Siteyi durdur' : 'Siteyi başlat'} onClick={() => runAction(site.id, () => invoke(site.running ? 'stop_site' : 'start_site', { id: site.id }))}>{working === site.id ? <Loader2 size={16} className="spin"/> : site.running ? <Square size={15}/> : <Play size={15}/>}</button></div>
         </article>)}</div>}
 
-        <section className="environment" id="environment"><div className="env-head"><div><div className="eyebrow">SYSTEM HEALTH</div><h2>Yerel ortam</h2><p>{bundledRuntime ? 'Gerekli PHP, WP-CLI ve MariaDB uygulama paketinden çalıştırılıyor.' : 'Geliştirici modu: eksik bağımlılıkları sisteminize kurmanız gerekir.'}</p></div><button className="outline-btn" disabled={!!working} onClick={() => runAction('refresh', refresh)}><RefreshCw size={15}/> Tekrar kontrol et</button></div><div className="dependency-grid">{deps.map(dep => <div className="dependency" key={dep.name}><div className="dependency-symbol">{dep.name.includes('PHP') ? <Code2 size={18}/> : dep.name.includes('WordPress') || dep.name.includes('WP-CLI') ? <TerminalSquare size={18}/> : <Database size={18}/>}</div><div className="dependency-detail"><strong>{dep.name}</strong><span title={dep.version}>{dep.version || 'Yüklü değil'}</span></div><div className={`dependency-state ${dep.installed ? 'ok' : 'missing'}`}>{dep.installed ? <Check size={16}/> : <X size={16}/>}</div></div>)}</div>{deps.length > 0 && !allReady && <div className="install-warning"><LockKeyhole size={17}/><span>Eksik bağımlılıklar var. Kurulum komutları için paketteki <code>README.md</code> dosyasına bakın.</span></div>}</section>
+        <section className="environment" id="environment"><div className="env-head"><div><div className="eyebrow">SYSTEM HEALTH</div><h2>Yerel ortam</h2><p>{bundledRuntime
+            ? (allReady ? 'PHP, WP-CLI ve MariaDB uygulama paketinden çalıştırılmaya hazır.' : 'Paketli çalışma ortamı eksik veya hatalı. Lütfen dağıtım paketinin bütünlüğünü kontrol edin.')
+            : 'Geliştirici modu: gerekli bağımlılıkların sisteminizde çalışması gerekir.'}</p></div><button className="outline-btn" disabled={!!working} onClick={() => runAction('refresh', refresh)}><RefreshCw size={15}/> Tekrar kontrol et</button></div><div className="dependency-grid">{deps.map(dep => <div className="dependency" key={dep.name}><div className="dependency-symbol">{dep.name.includes('PHP') ? <Code2 size={18}/> : dep.name.includes('WordPress') || dep.name.includes('WP-CLI') ? <TerminalSquare size={18}/> : <Database size={18}/>}</div><div className="dependency-detail"><strong>{dep.name}</strong><span title={dep.version}>{dep.version || 'Yüklü değil'}</span></div><div className={`dependency-state ${dep.installed ? 'ok' : 'missing'}`}>{dep.installed ? <Check size={16}/> : <X size={16}/>}</div></div>)}</div>{deps.length > 0 && !allReady && <div className="install-warning"><LockKeyhole size={17}/><span>{bundledRuntime ? 'Paketlenmiş motor eksik veya çalışmıyor. Sistem PHP/MySQL kurulumu bu hatayı düzeltmez.' : <>Eksik bağımlılıklar var. Geliştirici kurulum talimatları için <code>README.md</code> dosyasını inceleyin.</>}</span></div>}</section>
         <footer className="footer">PressForge 0.2.0 <span>•</span> Tamamen yerel WordPress geliştirme <span>•</span> Geliştirme sunucusunu internete açmayın.</footer>
       </section>
     </main>
