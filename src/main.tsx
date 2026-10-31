@@ -40,9 +40,11 @@ function App() {
   const [working, setWorking] = useState('');
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [createStep, setCreateStep] = useState<0|1>(0);
   const [form, setForm] = useState<CreateSite>({ ...initialForm });
   const [logSite, setLogSite] = useState<Site | null>(null);
   const [logs, setLogs] = useState('');
+  const [logPage, setLogPage] = useState(0);
   const [notice, setNotice] = useState<{ kind: 'error' | 'success'; message: string } | null>(null);
 
   const refresh = useCallback(async () => {
@@ -97,6 +99,7 @@ function App() {
   async function showLogs(site: Site) {
    
     setLogSite(site);
+    setLogPage(0);
     setLogs('Log dosyası okunuyor…');
     try { setLogs(await invoke<string>('read_log', { id: site.id })); }
     catch (e) { setLogs(String(e)); }
@@ -114,7 +117,7 @@ function App() {
       working={working} search={search} allReady={allReady} bundledRuntime={bundledRuntime}
       onSearch={setSearch}
       onRefresh={() => { void runAction('refresh',refresh); }}
-      onCreate={() => setShowForm(true)}
+      onCreate={() => {setCreateStep(0);setShowForm(true);}}
       onOpen={(site,target) => { void openSite(site,target); }}
       onPower={site => { void runAction(site.id, () => invoke(site.running?'stop_site':'start_site',{id:site.id})); }}
       onArchive={site => { void archiveSite(site); }}
@@ -126,11 +129,58 @@ function App() {
     {notice && <div className={`toast ${notice.kind}`} role="alert"><span>{notice.kind === 'success' ? <Check size={18}/> : <X size={18}/>}</span><p>{notice.message}</p><button onClick={() => setNotice(null)} aria-label="Bildirimi kapat"><X size={16}/></button></div>}
 
     {showForm && <div className="modal-backdrop" role="presentation"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><div className="modal-header"><div><div className="eyebrow">NEW WORKSPACE</div><h2 id="create-title">Yeni WordPress sitesi</h2><p>Kurulum otomatik olarak WP-CLI ile gerçekleştirilecek.</p></div><button className="bare-button" onClick={() => !working && setShowForm(false)} disabled={!!working} aria-label="Kapat"><X size={20}/></button></div>
-      <form onSubmit={createSite}><div className="form-body"><label>Site adı<input autoFocus required maxLength={90} placeholder="Örn. Magna Demo" value={form.title} onChange={e => setForm({...form, title:e.target.value})}/></label><div className="form-row"><label>Yönetici kullanıcı adı<input required placeholder="admin" value={form.adminUser} onChange={e => setForm({...form, adminUser:e.target.value})}/></label><label>WordPress dili<select value={form.locale} onChange={e => setForm({...form, locale:e.target.value as CreateSite['locale']})}><option value="tr_TR">Türkçe (tr_TR)</option><option value="en_US">English (en_US)</option></select></label></div><div className="form-row"><label>Yönetici e-posta<input required type="email" placeholder="admin@example.test" value={form.adminEmail} onChange={e => setForm({...form, adminEmail:e.target.value})}/></label><label>WordPress şifresi<input required minLength={12} type="password" autoComplete="new-password" placeholder="En az 12 karakter" value={form.adminPassword} onChange={e => setForm({...form, adminPassword:e.target.value})}/></label></div>{!bundledRuntime && <><div className="form-divider"><Database size={17}/> Yerel MariaDB bağlantısı</div><div className="form-row"><label>MariaDB yönetici kullanıcı adı<input required value={form.dbAdminUser} onChange={e => setForm({...form, dbAdminUser:e.target.value})}/></label><label>MariaDB yönetici şifresi <span className="optional">(yoksa boş)</span><input type="password" autoComplete="off" placeholder="Yerel veritabanı şifresi" value={form.dbAdminPassword} onChange={e => setForm({...form, dbAdminPassword:e.target.value})}/></label></div></>}<div className="info-line"><ShieldCheck size={16}/> Şifreler uygulama kayıtlarında saklanmaz. WordPress bağlantı şifresi kendi wp-config.php dosyasında tutulur.</div></div><div className="modal-actions"><button type="button" className="outline-btn" onClick={() => setShowForm(false)} disabled={!!working}>Vazgeç</button><button type="submit" className="primary-btn" disabled={!allReady || !!working}>{working === 'create' ? <><Loader2 size={17} className="spin"/> WordPress kuruluyor…</> : <><Plus size={17}/> Siteyi oluştur</>}</button></div></form>
+      <form onSubmit={e=>{if(createStep===0){e.preventDefault();setCreateStep(1);}else{void createSite(e);}}}>
+        <div className="ns-wizard-steps" aria-label="Kurulum adımları">
+          <span className={createStep===0?'selected':''}>1 · Proje</span>
+          <span className={createStep===1?'selected':''}>2 · Erişim & güvenlik</span>
+        </div>
+        <div className="form-body">
+          {createStep===0?<><label>Site adı
+            <input autoFocus required maxLength={90} placeholder="Örn. Magna Demo" value={form.title}
+              onChange={e=>setForm({...form,title:e.target.value})}/>
+          </label><div className="form-row">
+            <label>Yönetici kullanıcı adı<input required value={form.adminUser}
+              onChange={e=>setForm({...form,adminUser:e.target.value})}/></label>
+            <label>WordPress dili<select value={form.locale}
+              onChange={e=>setForm({...form,locale:e.target.value as CreateSite['locale']})}>
+                <option value="tr_TR">Türkçe</option><option value="en_US">English</option>
+              </select></label>
+          </div><label>Yönetici e-postası<input required type="email" placeholder="admin@example.test"
+            value={form.adminEmail} onChange={e=>setForm({...form,adminEmail:e.target.value})}/></label>
+          </>:<><label>WordPress yönetici şifresi
+            <input autoFocus required type="password" minLength={12} autoComplete="new-password"
+              placeholder="En az 12 karakter" value={form.adminPassword}
+              onChange={e=>setForm({...form,adminPassword:e.target.value})}/>
+          </label>{!bundledRuntime&&<><div className="form-divider"><Database size={15}/>
+            Geliştirici MariaDB bağlantısı</div><div className="form-row">
+            <label>Veritabanı kullanıcısı<input required value={form.dbAdminUser}
+              onChange={e=>setForm({...form,dbAdminUser:e.target.value})}/></label>
+            <label>Veritabanı şifresi <span className="optional">(opsiyonel)</span>
+              <input type="password" autoComplete="off" value={form.dbAdminPassword}
+                onChange={e=>setForm({...form,dbAdminPassword:e.target.value})}/></label>
+          </div></>}<div className="info-line"><ShieldCheck size={15}/>
+            Kimlik bilgileri uygulama loglarına yazılmaz. Bağlantı bilgileri siteye özel wp-config.php dosyasında tutulur.
+          </div></>}
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="outline-btn" disabled={!!working}
+            onClick={()=>createStep===1?setCreateStep(0):setShowForm(false)}>
+            {createStep===1?'Geri':'Vazgeç'}
+          </button>
+          <button type="submit" className="primary-btn" disabled={!!working||(createStep===1&&!allReady)}>
+            {working==='create'?<><Loader2 size={16} className="spin"/> WordPress kuruluyor…</>
+              :createStep===0?'Devam Et':<><Plus size={16}/> Siteyi oluştur</>}
+          </button>
+        </div>
+      </form>
     </div></div>}
 
     {toolSite && <SiteToolkit site={toolSite} initialTab={toolTab} close={() => setToolSite(null)} />}
-    {logSite && <div className="modal-backdrop"><div className="modal log-modal" role="dialog" aria-modal="true" aria-labelledby="log-title"><div className="modal-header"><div><div className="eyebrow">PHP DEVELOPMENT LOG</div><h2 id="log-title">{logSite.title} — PHP logları</h2></div><button className="bare-button" onClick={() => setLogSite(null)} aria-label="Kapat"><X size={20}/></button></div><pre className="log-output">{logs}</pre><div className="modal-actions"><button className="outline-btn" onClick={async () => setLogs(await invoke<string>('read_log', { id: logSite.id }))}><RefreshCw size={15}/> Yenile</button><button className="primary-btn" onClick={() => setLogSite(null)}>Kapat</button></div></div></div>}
+    {logSite && <div className="modal-backdrop"><div className="modal log-modal" role="dialog" aria-modal="true" aria-labelledby="log-title"><div className="modal-header"><div><div className="eyebrow">PHP DEVELOPMENT LOG</div><h2 id="log-title">{logSite.title} — PHP logları</h2></div><button className="bare-button" onClick={() => setLogSite(null)} aria-label="Kapat"><X size={20}/></button></div><pre className="log-output">{logs.split('\n').slice(logPage*24,(logPage+1)*24).join('\n')}</pre>
+      <div className="ns-log-pager"><span>{Math.min(logPage*24+1,logs.split('\n').length)}–{Math.min((logPage+1)*24,logs.split('\n').length)} / {logs.split('\n').length} satır</span>
+        <button type="button" disabled={logPage===0} onClick={()=>setLogPage(logPage-1)}>Önceki</button>
+        <button type="button" disabled={(logPage+1)*24>=logs.split('\n').length} onClick={()=>setLogPage(logPage+1)}>Sonraki</button>
+      </div><div className="modal-actions"><button className="outline-btn" onClick={async () => setLogs(await invoke<string>('read_log', { id: logSite.id }))}><RefreshCw size={15}/> Yenile</button><button className="primary-btn" onClick={() => setLogSite(null)}>Kapat</button></div></div></div>}
   </div>;
 }
 
