@@ -114,7 +114,16 @@ jobs:
           fi
           php /tmp/pressforge-wp-cli.phar --path="$tmp" db export "$tmp/snapshot-test.sql" --quiet
           test -s "$tmp/snapshot-test.sql"
-          echo '[OK] Site cache/rewrite, SQL-backed snapshot export'
+          # Exercise the same SQL import/export primitives as the new
+          # rollback-capable snapshot restore. Keep credentials out of logs.
+          baseline="$(php /tmp/pressforge-wp-cli.phar --path="$tmp" option get blogdescription)"
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" option update blogdescription 'PressForge CI altered content' --quiet
+          changed="$(php /tmp/pressforge-wp-cli.phar --path="$tmp" option get blogdescription)"
+          test "$changed" = 'PressForge CI altered content'
+          php /tmp/pressforge-wp-cli.phar --path="$tmp" db import "$tmp/snapshot-test.sql" --quiet
+          restored="$(php /tmp/pressforge-wp-cli.phar --path="$tmp" option get blogdescription)"
+          test "$restored" = "$baseline"
+          echo '[OK] WordPress SQL snapshot export, mutation and successful restore'
           php -S 127.0.0.1:18117 -t "$tmp" src-tauri/src/router.php >"$tmp/php.log" 2>&1 &
           server_pid="$!"
           for attempt in $(seq 1 30); do
