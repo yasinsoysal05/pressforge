@@ -55,12 +55,15 @@ def versions_ok(file):
         die(f'Intel x86_64 olmayan Mach-O: {file} ({info})')
     lines = run('otool', '-l', str(file)).splitlines()
     for i, row in enumerate(lines):
-        if row.strip() == 'cmd LC_BUILD_VERSION':
-            window = lines[i:i+8]
-            for part in window:
-                m = re.search(r'\bminos\s+(\d+\.\d+(?:\.\d+)?)', part)
-                if m and tuple(map(int,m.group(1).split('.'))) > (13,0,0):
-                    die(f'Ventura 13 üzerinde çalışmayacak binary: {file}, minos={m.group(1)}')
+        if row.strip() in ('cmd LC_BUILD_VERSION', 'cmd LC_VERSION_MIN_MACOSX'):
+            key = 'minos' if row.strip() == 'cmd LC_BUILD_VERSION' else 'version'
+            for part in lines[i:i+8]:
+                m = re.search(r'\b'+key+r'\s+(\d+\.\d+(?:\.\d+)?)', part)
+                if m:
+                    version = tuple((list(map(int,m.group(1).split('.'))) + [0,0,0])[:3])
+                    if version > (13,0,0):
+                        die(f'Ventura 13 üzerinde çalışmayacak binary: {file}, minos={m.group(1)}')
+                    break
 
 
 def deps(file):
@@ -176,7 +179,11 @@ def main():
         if file in visited: continue
         visited.add(file)
         versions_ok(file)
+        install_id=run('otool','-D',str(file),check=False).splitlines()
+        own_id=install_id[1].strip() if len(install_id)>1 else ''
         for dep in deps(file):
+            # otool -L on a dylib contains its own install-name ID as the first row.
+            if own_id and dep == own_id: continue
             if dep.startswith(SYSDIRS): continue
             resolved=resolve_install_name(dep,file)
             if resolved is None or not resolved.exists(): die(f'{file}: çözümlenemeyen dylib: {dep}')
