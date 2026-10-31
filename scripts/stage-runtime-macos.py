@@ -9,6 +9,7 @@ This is a build tool; success must be followed by actual Ventura end-to-end test
 """
 from __future__ import annotations
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -158,18 +159,23 @@ def copy_and_fix_symlinks(source, dest):
 
 
 def stage_phar():
-    base='https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/'
-    phar_url=base+'wp-cli.phar'
-    checksum_url=phar_url+'.sha512'
-    print('[WP-CLI] Resmi PHAR ve checksum indiriliyor')
+    # A rotating "latest" download without a pinned digest makes source tags
+    # non-reproducible. Do not replace this check with the remote latest SHA.
+    locked = json.loads((ROOT/'runtime-lock.json').read_text(encoding='utf-8'))['wp_cli']
+    phar_url = locked['source']
+    sha = locked['sha512'].lower()
+    allowed = 'https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar'
+    if phar_url != allowed or len(sha) != 128 or any(c not in '0123456789abcdef' for c in sha):
+        die('WP-CLI runtime-lock.json geçersiz; resmi kaynak ve SHA-512 gerekli')
+    print('[WP-CLI] Sabit SHA-512 ile kontrol edilen PHAR indiriliyor')
     req=urllib.request.Request(phar_url,headers={'User-Agent':'PressForge-packager/0.2'})
     with urllib.request.urlopen(req,timeout=90) as resp: content=resp.read()
-    with urllib.request.urlopen(checksum_url,timeout=30) as resp: sha=resp.read().decode().split()[0]
     digest=hashlib.sha512(content).hexdigest()
-    if digest.lower()!=sha.lower(): die('WP-CLI SHA512 bütünlük kontrolü başarısız')
+    if digest!=sha:
+        die('WP-CLI dosyası kilitlenen SHA-512 ile eşleşmiyor; sürümü bilinçli güncelleyin')
     tools=RUNTIME/'tools'; tools.mkdir(parents=True,exist_ok=True)
     (tools/'wp-cli.phar').write_bytes(content)
-    print(f'[WP-CLI] OK: {len(content):,} bytes, sha512={digest[:16]}...')
+    print(f'[WP-CLI] OK: {len(content):,} bytes, pinned sha512={digest[:16]}...')
 
 
 def main():
