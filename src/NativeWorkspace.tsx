@@ -9,7 +9,7 @@ import {
   RefreshCw, Search, Server, Settings2, ShieldCheck, SlidersHorizontal,
   Square, TerminalSquare, Wrench,
 } from 'lucide-react';
-import type { ModuleInfo } from './StudioModules';
+import { SiteToolkit, type ModuleInfo } from './StudioModules';
 import './native-shell.css';
 
 export type SiteRecord = {
@@ -90,16 +90,43 @@ function Paginator({index,count,limit=6,onChange}:{index:number;count:number;lim
   </div>;
 }
 
+function EmbeddedLogs({site}:{site:SiteRecord}){
+  const [lines,setLines]=useState<string[]>([]);
+  const [page,setPage]=useState(0);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');
+  async function refresh(){
+    setLoading(true);setError('');
+    try {
+      const raw=await invoke<string>('read_log',{id:site.id});
+      setLines(raw.split('\\n'));
+      setPage(0);
+    }catch(e){setError(String(e));}
+    finally{setLoading(false);}
+  }
+  useEffect(()=>{void refresh();},[site.id]);
+  const count=16;
+  return <div className="ns-inline-logs">
+    <div className="ns-log-toolbar"><strong>PHP çıktı günlüğü</strong>
+      <button type="button" disabled={loading} onClick={()=>void refresh()}><RefreshCw size={15}/> Yenile</button></div>
+    {loading?<div className="ns-empty">Log dosyası okunuyor…</div>:
+      error?<div className="ns-empty">{error}</div>:<div className="ns-log-lines">
+        {lines.slice(page*count,(page+1)*count).map((line,i)=><div key={i+page*count} title={line}>{line||' '}</div>)}
+      </div>}
+    <Paginator index={page} count={lines.length} limit={count} onChange={setPage}/>
+  </div>;
+}
+
 export function NativeWorkspace({
   sites,deps,modules,loading,working,search,allReady,bundledRuntime,
-  onSearch,onRefresh,onCreate,onOpen,onPower,onArchive,onTools,onLogs,onError,
+  onSearch,onRefresh,onCreate,onOpen,onPower,onArchive,onTools,onError,
 }:{
   sites:SiteRecord[];deps:RuntimeDependency[];modules:ModuleInfo[];loading:boolean;working:string;search:string;
   allReady:boolean;bundledRuntime:boolean;
   onSearch:(value:string)=>void;onRefresh:()=>void;onCreate:()=>void;
   onOpen:(site:SiteRecord,target:'website'|'admin'|'folder')=>void;
   onPower:(site:SiteRecord)=>void;onArchive:(site:SiteRecord)=>void;
-  onTools:(site:SiteRecord,tab:ToolkitTab)=>void;onLogs:(site:SiteRecord)=>void;
+  onTools:(site:SiteRecord,tab:ToolkitTab)=>void;
   onError:(error:unknown)=>void;
 }){
   const [page,setPage]=useState('overview');
@@ -281,12 +308,11 @@ export function NativeWorkspace({
             <div className="ns-panel-heading"><div><strong>{TOOLS[page].title}</strong><small>{TOOLS[page].desc}</small></div>
               <span className="ns-status-tag ready">Yerel işlem</span></div>
             {siteChooser()}
-            <div className="ns-tool-actions">
-              {page==='extensions'?<>
-                <button type="button" disabled={!selected} onClick={()=>selected&&onTools(selected,'plugin')}><Package size={21}/><strong>Eklentileri Yönet</strong><small>Etkinleştir veya devre dışı bırak</small></button>
-                <button type="button" disabled={!selected} onClick={()=>selected&&onTools(selected,'theme')}><Layers3 size={21}/><strong>Temaları Yönet</strong><small>Kurulu temaları görüntüle</small></button>
-              </>:page==='logs'?<button type="button" disabled={!selected} onClick={()=>selected&&onLogs(selected)}><FileText size={21}/><strong>PHP Hata Günlüğü</strong><small>Son yerel kayıtları aç</small></button>
-              :<button type="button" disabled={!selected} onClick={()=>selected&&onTools(selected,TOOLS[page].tab)}><current.Icon size={21}/><strong>{page==='database'?'Tablo ve Kolonları İncele':page==='snapshots'?'Snapshot Oluştur / Yönet':'Bakım Araçlarını Aç'}</strong><small>{page==='snapshots'?'SQL ve dosya yedeği; site durdurulmuş olmalı':'Yalnızca izinli yerel WP-CLI işlemleri'}</small></button>}
+            <div className="ns-embedded-toolkit">
+              {!selected?<div className="ns-empty">Bu modül için önce bir WordPress sitesi oluştur.</div>
+                :page==='logs'?<EmbeddedLogs key={selected.id} site={selected}/>
+                :<SiteToolkit key={selected.id+'-'+page} site={selected}
+                  initialTab={TOOLS[page].tab} embedded close={()=>{}}/>}
             </div>
           </div><div className="ns-hint"><ShieldCheck size={15}/> Bu sayfa doğrudan seçtiğin WordPress projesiyle çalışır; keyfî komut yürütmez.</div>
         </div>}
