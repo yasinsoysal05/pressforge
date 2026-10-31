@@ -39,6 +39,7 @@ function IconMark({ size = 40 }: { size?: number }) {
 function App() {
   const [sites, setSites] = useState<Site[]>([]);
   const [deps, setDeps] = useState<Dependency[]>([]);
+  const [runtimeMode, setRuntimeMode] = useState<'bundled' | 'development' | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState('');
   const [search, setSearch] = useState('');
@@ -50,11 +51,13 @@ function App() {
   const [menu, setMenu] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [sitesResult, depResult] = await Promise.all([
+    const [sitesResult, depResult, modeResult] = await Promise.all([
       invoke<Site[]>('list_sites'), invoke<Dependency[]>('check_dependencies'),
+      invoke<'bundled' | 'development'>('runtime_mode'),
     ]);
     setSites(sitesResult);
     setDeps(depResult);
+    setRuntimeMode(modeResult);
   }, []);
 
   useEffect(() => {
@@ -64,7 +67,7 @@ function App() {
 
   const notifyError = (e: unknown) => setNotice({ kind: 'error', message: String(e) });
   const allReady = deps.length > 0 && deps.every(d => d.installed);
-  const bundledRuntime = deps.some(d => d.installed && (d.path.includes('/Resources/runtime/') || d.path.includes('/resources/runtime/')));
+  const bundledRuntime = runtimeMode === 'bundled';
   const running = sites.filter(s => s.running).length;
   const visibleSites = useMemo(() => sites.filter(s =>
     `${s.title} ${s.url} ${s.adminUser}`.toLowerCase().includes(search.toLowerCase())), [sites, search]);
@@ -83,10 +86,13 @@ function App() {
     e.preventDefault();
     if (!allReady || working) return;
     await runAction('create', async () => {
-      await invoke('create_site', { newSite: form });
+      const created = await invoke<Site>('create_site', { newSite: form });
       setShowForm(false);
       setForm({ ...initialForm });
-    }, 'Yeni WordPress siteniz oluşturuldu.');
+      setNotice(created.running
+        ? { kind: 'success', message: 'WordPress sitesi oluşturuldu ve PHP sunucusu başlatıldı.' }
+        : { kind: 'error', message: 'WordPress sitesi oluşturuldu, ancak PHP sunucusu çalışmıyor. PHP loglarını inceleyin veya siteyi tekrar başlatın.' });
+    });
   }
 
   async function openSite(site: Site, target: 'website' | 'admin' | 'folder') {
@@ -127,9 +133,9 @@ function App() {
     </aside>
 
     <main className="main">
-      <div className="topbar"><div className="crumb">Workspace <ChevronRight size={13} /> <strong>Sitelerim</strong></div><div className="top-note"><span className="green-dot" /> LOCAL ENVIRONMENT <span className="top-divider"/> <Code2 size={17}/></div></div>
+      <div className="topbar"><div className="crumb">Workspace <ChevronRight size={13} /> <strong>Sitelerim</strong></div><div className="top-note">{allReady ? <span className="green-dot"/> : <ShieldCheck size={14}/>} {allReady ? 'LOCAL ENVIRONMENT READY' : 'RUNTIME NOT READY'} <span className="top-divider"/> <Code2 size={17}/></div></div>
       <section className="main-content">
-        <div className="hero"><div className="hero-text"><div className="eyebrow"><span className="eyebrow-circle" /> WORDPRESS DEVELOPMENT ENVIRONMENT</div><h1>Kodla. Geliştir.<br/><em>Özgürce üret.</em></h1><p>WordPress projelerini yerel ortamında oluştur, çalıştır ve tek bir yerden yönet. Karmaşık sunucu ayarlarına gerek yok.</p><button className="primary-btn" onClick={() => setShowForm(true)}><Plus size={19}/> Yeni WordPress sitesi <ArrowRight size={17}/></button></div><div className="hero-decor" aria-hidden="true"><div className="orb"><div className="orb-inner"><Layers3 size={70}/></div></div><div className="floating-pill pill-top"><span className="green-dot"/> Server ready</div><div className="floating-pill pill-bottom"><TerminalSquare size={14}/> PHP / MySQL</div></div></div>
+        <div className="hero"><div className="hero-text"><div className="eyebrow"><span className="eyebrow-circle" /> WORDPRESS DEVELOPMENT ENVIRONMENT</div><h1>Kodla. Geliştir.<br/><em>Özgürce üret.</em></h1><p>WordPress projelerini yerel ortamında oluştur, çalıştır ve tek bir yerden yönet. Karmaşık sunucu ayarlarına gerek yok.</p><button className="primary-btn" onClick={() => setShowForm(true)}><Plus size={19}/> Yeni WordPress sitesi <ArrowRight size={17}/></button></div><div className="hero-decor" aria-hidden="true"><div className="orb"><div className="orb-inner"><Layers3 size={70}/></div></div><div className="floating-pill pill-top">{allReady ? <><span className="green-dot"/> Runtime ready</> : <><ShieldCheck size={14}/> Runtime incomplete</>}</div><div className="floating-pill pill-bottom"><TerminalSquare size={14}/> PHP / MySQL</div></div></div>
         <div className="metrics"><div className="metric"><div className="metric-icon blue"><HardDrive size={19}/></div><div><span>Toplam proje</span><strong>{sites.length.toString().padStart(2,'0')}</strong></div></div><div className="metric"><div className="metric-icon green"><Activity size={19}/></div><div><span>Çalışan siteler</span><strong>{running.toString().padStart(2,'0')}</strong></div></div><div className="metric"><div className="metric-icon violet"><Database size={19}/></div><div><span>Yerel veritabanı</span><strong>{sites.length.toString().padStart(2,'0')}</strong></div></div></div>
 
         <div className="section-heading"><div><h2>Projelerim <span>{sites.length}</span></h2><p>Tüm WordPress çalışma alanların</p></div><div className="actions"><div className="search-box"><Search size={17}/><input aria-label="Projelerde ara" placeholder="Projelerde ara..." value={search} onChange={e => setSearch(e.target.value)}/></div><button title="Yenile" aria-label="Listeyi yenile" className="icon-button" onClick={() => runAction('refresh', refresh)} disabled={!!working}><RefreshCw size={18} className={working === 'refresh' ? 'spin' : ''} /></button></div></div>
@@ -140,7 +146,9 @@ function App() {
           <div className="site-footer"><button className="site-open" disabled={!site.running} onClick={() => openSite(site,'website')}><ExternalLink size={15}/> Siteyi aç</button><button className="site-open" disabled={!site.running} onClick={() => openSite(site,'admin')}>WP Admin</button><button className={`site-power ${site.running ? 'stop' : 'start'}`} disabled={!!working} title={site.running ? 'Durdur' : 'Başlat'} aria-label={site.running ? 'Siteyi durdur' : 'Siteyi başlat'} onClick={() => runAction(site.id, () => invoke(site.running ? 'stop_site' : 'start_site', { id: site.id }))}>{working === site.id ? <Loader2 size={16} className="spin"/> : site.running ? <Square size={15}/> : <Play size={15}/>}</button></div>
         </article>)}</div>}
 
-        <section className="environment" id="environment"><div className="env-head"><div><div className="eyebrow">SYSTEM HEALTH</div><h2>Yerel ortam</h2><p>{bundledRuntime ? 'Gerekli PHP, WP-CLI ve MariaDB uygulama paketinden çalıştırılıyor.' : 'Geliştirici modu: eksik bağımlılıkları sisteminize kurmanız gerekir.'}</p></div><button className="outline-btn" disabled={!!working} onClick={() => runAction('refresh', refresh)}><RefreshCw size={15}/> Tekrar kontrol et</button></div><div className="dependency-grid">{deps.map(dep => <div className="dependency" key={dep.name}><div className="dependency-symbol">{dep.name.includes('PHP') ? <Code2 size={18}/> : dep.name.includes('WordPress') || dep.name.includes('WP-CLI') ? <TerminalSquare size={18}/> : <Database size={18}/>}</div><div className="dependency-detail"><strong>{dep.name}</strong><span title={dep.version}>{dep.version || 'Yüklü değil'}</span></div><div className={`dependency-state ${dep.installed ? 'ok' : 'missing'}`}>{dep.installed ? <Check size={16}/> : <X size={16}/>}</div></div>)}</div>{deps.length > 0 && !allReady && <div className="install-warning"><LockKeyhole size={17}/><span>Eksik bağımlılıklar var. Kurulum komutları için paketteki <code>README.md</code> dosyasına bakın.</span></div>}</section>
+        <section className="environment" id="environment"><div className="env-head"><div><div className="eyebrow">SYSTEM HEALTH</div><h2>Yerel ortam</h2><p>{bundledRuntime
+            ? (allReady ? 'PHP, WP-CLI ve MariaDB uygulama paketinden çalıştırılmaya hazır.' : 'Paketli çalışma ortamı eksik veya hatalı. Lütfen dağıtım paketinin bütünlüğünü kontrol edin.')
+            : 'Geliştirici modu: gerekli bağımlılıkların sisteminizde çalışması gerekir.'}</p></div><button className="outline-btn" disabled={!!working} onClick={() => runAction('refresh', refresh)}><RefreshCw size={15}/> Tekrar kontrol et</button></div><div className="dependency-grid">{deps.map(dep => <div className="dependency" key={dep.name}><div className="dependency-symbol">{dep.name.includes('PHP') ? <Code2 size={18}/> : dep.name.includes('WordPress') || dep.name.includes('WP-CLI') ? <TerminalSquare size={18}/> : <Database size={18}/>}</div><div className="dependency-detail"><strong>{dep.name}</strong><span title={dep.version}>{dep.version || 'Yüklü değil'}</span></div><div className={`dependency-state ${dep.installed ? 'ok' : 'missing'}`}>{dep.installed ? <Check size={16}/> : <X size={16}/>}</div></div>)}</div>{deps.length > 0 && !allReady && <div className="install-warning"><LockKeyhole size={17}/><span>{bundledRuntime ? 'Paketlenmiş motor eksik veya çalışmıyor. Sistem PHP/MySQL kurulumu bu hatayı düzeltmez.' : <>Eksik bağımlılıklar var. Geliştirici kurulum talimatları için <code>README.md</code> dosyasını inceleyin.</>}</span></div>}</section>
         <footer className="footer">PressForge 0.2.0 <span>•</span> Tamamen yerel WordPress geliştirme <span>•</span> Geliştirme sunucusunu internete açmayın.</footer>
       </section>
     </main>
