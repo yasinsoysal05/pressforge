@@ -221,3 +221,16 @@ button,input,select{font-family:inherit}
 .ns-log-lines>div{flex:1;min-height:13px;font:10px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;color:#a2d6bf}
 .ns-inline-logs .ns-pager{flex:0 0 32px;height:32px}
 @media(max-height:750px){.ns-embedded-toolkit{padding-bottom:8px}.ns-embedded-toolkit .pf-embedded .pf-toolkit-content{padding:7px 10px}.ns-embedded-toolkit .pf-embedded .pf-toolkit-description{margin-bottom:6px;font-size:10px}}
+
+.ns-diagnostics{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;overflow:hidden;border:1px solid #384259;border-radius:10px;background:#1e2535}
+.ns-diagnostics .ns-empty{flex:1}
+.ns-diagnostics-result{flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;padding:14px;overflow:hidden}
+.ns-diagnostics-result>.ns-status-tag{align-self:flex-start}
+.ns-diagnostic-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.ns-diagnostic-facts>div{background:#242d40;border:1px solid #414b62;border-radius:9px;padding:13px 14px;min-width:0}
+.ns-diagnostic-facts small,.ns-diagnostic-url small{font-size:10px;color:#9ca9c0;display:block}
+.ns-diagnostic-facts strong,.ns-diagnostic-url strong{font-size:13px;display:block;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ns-diagnostic-url{background:#21293b;border:1px solid #3e485f;border-radius:9px;padding:10px 14px}
+.ns-diagnostics-warning,.ns-diagnostics-error{display:flex;align-items:center;gap:8px;color:#edc2a5;background:#3a2e2a;border:1px solid #65503c;border-radius:8px;font-size:11px;padding:9px 12px;min-height:30px}
+.ns-diagnostics-error{margin:12px;overflow-wrap:anywhere}
+@media(max-height:750px){.ns-diagnostics-result{padding:9px;gap:6px}.ns-diagnostic-facts>div{padding:8px 11px}}
