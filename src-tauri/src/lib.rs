@@ -446,6 +446,14 @@ fn site_view(site: Site, state: &AppState) -> Result<SiteView, String> {
 }
 
 #[tauri::command]
+fn runtime_mode(app: AppHandle) -> &'static str {
+    // Runtime mode must not be inferred from whichever binaries happen to work.
+    // In a release build, missing bundled binaries are actionable errors,
+    // not a reason to prompt end users to install system tools.
+    if bundle_runtime(&app).is_some() { "bundled" } else { "development" }
+}
+
+#[tauri::command]
 fn check_dependencies(app: AppHandle) -> Vec<Dependency> {
     let entries: [(&str, &[&str], &[&str]); 3] = [
         ("PHP", &["php"], &["-v"]),
@@ -799,7 +807,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
-            check_dependencies, list_sites, create_site, start_site, stop_site,
+            runtime_mode, check_dependencies, list_sites, create_site, start_site, stop_site,
             archive_site, read_log, open_site, open_help,
         ])
         .build(tauri::generate_context!())
