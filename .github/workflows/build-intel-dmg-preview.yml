@@ -1,0 +1,83 @@
+name: Build Intel macOS DMG preview (system runtime required)
+
+on:
+  push:
+    branches: [build/intel-dmg-preview-0.2.0]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pressforge-intel-dmg-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-intel-dmg:
+    name: PressForge v0.2.0 Intel DMG preview (NOT standalone)
+    runs-on: macos-15-intel
+    timeout-minutes: 80
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+      - name: Print environment and validate checkout
+        run: |
+          uname -m
+          sw_vers
+          test -s package-lock.json
+          test -s src-tauri/Cargo.lock
+          python3 scripts/check-version.py
+          python3 scripts/verify-project.py
+      - name: Enforce preview classification
+        run: |
+          # A real portable runtime is not present on main.
+          # This artifact MUST be labelled preview and MUST NOT be published as standalone.
+          test ! -e src-tauri/resources/runtime/php/bin/php
+          test ! -e src-tauri/resources/runtime/mariadb/bin/mariadbd
+          echo 'DMG is an unsigned development preview. It uses user-installed PHP/WP-CLI/MariaDB.'
+          echo 'Do not describe it as a portable PressForge installation.'
+      - name: Install locked frontend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Compile native Intel .app and .dmg
+        run: npm run tauri build -- --target x86_64-apple-darwin --bundles dmg
+      - name: Validate Intel app architecture and Ventura deployment target metadata
+        run: python3 scripts/check-native-macos-app.py
+      - name: Verify real DMG and its mounted app
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmgs=(src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg)
+          [[ "${#dmgs[@]}" -eq 1 ]] || { echo "Expected exactly one DMG, got ${#dmgs[@]}"; exit 1; }
+          dmg="${dmgs[0]}"
+          hdiutil verify "$dmg"
+          mnt="$(mktemp -d /tmp/pressforge-dmg-preview-XXXXXX)"
+          mounted=0
+          cleanup() {
+            if [[ "$mounted" -eq 1 ]]; then hdiutil detach "$mnt" -quiet || true; fi
+            rmdir "$mnt" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          hdiutil attach -readonly -nobrowse -mountpoint "$mnt" -quiet "$dmg"
+          mounted=1
+          test -d "$mnt/PressForge.app"
+          test ! -e "$mnt/PressForge.app/Contents/Resources/runtime/php/bin/php"
+          file "$mnt/PressForge.app/Contents/MacOS/pressforge"
+          shasum -a 256 "$dmg"
+          echo '[OK] Physical Intel DMG opens and contains PressForge.app.'
+          echo '[WARNING] No bundled PHP/MariaDB; not tested for WordPress site creation.'
+      - name: Upload DMG preview for download
+        uses: actions/upload-artifact@v4
+        with:
+          name: PressForge-v0.2.0-Intel-macOS-DMG-PREVIEW
+          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
