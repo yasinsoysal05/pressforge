@@ -6,7 +6,8 @@ import { Archive, CheckCircle2, ChevronDown, Code2, Database, FileArchive,
 
 export type ModuleInfo = {
   id: string; label: string; group: string;
-  status: 'ready'|'missing'|'planned'; version: string; description: string;
+  status: 'ready'|'missing'|'planned'|'disabled'; version: string; description: string;
+  toggleable: boolean; enabled: boolean;
 };
 export type ToolkitSite = { id: string; title: string; running: boolean; dbName: string };
 type ExtensionInfo = { name: string; status: string; version: string; update: string };
@@ -20,14 +21,25 @@ const groups = [
   { key: 'network', name: 'Domain & ağ', Icon: Database },
   { key: 'integration', name: 'Geliştirici entegrasyonları', Icon: Layers3 },
 ];
-const statusText = {ready:'Çalışıyor',missing:'Eksik',planned:'Planlandı'};
+const statusText = {ready:'Çalışıyor',missing:'Eksik',planned:'Planlandı',disabled:'Kapalı'};
 
 export function ModuleCenter({modules, refresh}: {
   modules: ModuleInfo[]; refresh: () => void;
 }) {
   const [showPlanned, setShowPlanned] = useState(false);
+  const [changing, setChanging] = useState('');
+  const [moduleError, setModuleError] = useState('');
   const available = modules.filter(m => m.status !== 'planned');
   const upcoming = modules.filter(m => m.status === 'planned');
+  async function toggle(m:ModuleInfo) {
+    setChanging(m.id);
+    setModuleError('');
+    try {
+      await invoke('set_studio_module_enabled',{moduleId:m.id,enabled:!m.enabled});
+      refresh();
+    } catch(e) {setModuleError(String(e));}
+    finally {setChanging('');}
+  }
   const render = (m:ModuleInfo) => <div className="pf-module" key={m.id}>
     <div className="pf-module-heading">
       <span className={'pf-module-led '+m.status} />
@@ -36,6 +48,11 @@ export function ModuleCenter({modules, refresh}: {
     </div>
     <p>{m.description}</p>
     {m.version && <code title={m.version}>{m.version}</code>}
+    {m.toggleable && <button type="button" className="pf-module-switch"
+      disabled={!!changing} aria-pressed={m.enabled}
+      onClick={()=>toggle(m)}>
+      {changing===m.id?'İşleniyor…':m.enabled?'Modülü kapat':'Modülü etkinleştir'}
+    </button>}
   </div>;
   return <section className="pf-modules" id="studio-modules">
     <header className="pf-module-top">
@@ -61,6 +78,7 @@ export function ModuleCenter({modules, refresh}: {
         <h3><g.Icon size={17}/>{g.name}</h3>
         <div className="pf-module-grid">{upcoming.filter(m=>m.group===g.key).map(render)}</div>
       </div>)}
+      {moduleError && <p className="pf-toolkit-warning">{moduleError}</p>}
       <p className="pf-module-warning">Planlandı etiketli özellikler henüz etkin değildir. SSL,
       çoklu PHP sürümü, Apache/Nginx, SSH deployment ve AI teşhis burada listelenir fakat çalıştırılmaz.</p>
     </div>
