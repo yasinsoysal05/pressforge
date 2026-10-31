@@ -171,6 +171,12 @@ def main():
     for label, source in (('php',php),('mariadb',maria)):
         print(f'[{label}] {source} -> {RUNTIME/label}')
         copy_and_fix_symlinks(source, RUNTIME/label)
+    # MariaDB's integration tests are not required by the installed database
+    # daemon. In particular test_pam_modules may target a newer macOS SDK.
+    test_plugins = RUNTIME / 'mariadb/lib/plugin/test_pam_modules'
+    if test_plugins.exists():
+        print(f'[MariaDB] Excluding test-only PAM modules: {test_plugins}')
+        shutil.rmtree(test_plugins)
     stage_phar()
     needed=(RUNTIME/'php/bin/php',RUNTIME/'mariadb/bin/mariadbd',RUNTIME/'mariadb/bin/mariadb')
     for file in needed:
@@ -179,6 +185,18 @@ def main():
     alt=RUNTIME/'mariadb/bin/mariadb-install-db'
     if not scripts.exists() and not alt.exists(): die('mariadb-install-db eksik')
     todo=[p for p in RUNTIME.rglob('*') if macho(p)]
+    incompatible = []
+    for item in todo:
+        try:
+            versions_ok(item)
+        except SystemExit as error:
+            incompatible.append(str(error))
+    if incompatible:
+        for message in incompatible[:40]:
+            print('[UYUMSUZ] ' + message, file=sys.stderr)
+        if len(incompatible) > 40:
+            print(f'[UYUMSUZ] ... {len(incompatible)-40} ek dosya', file=sys.stderr)
+        die(f'{len(incompatible)} Intel Mach-O dosyası Ventura 13 hedefini karşılamıyor; paketlemeyi durdurdum.')
     extra=[]; visited=set(); fixups=0
     while todo:
         file=todo.pop()
