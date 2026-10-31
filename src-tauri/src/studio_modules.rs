@@ -126,6 +126,8 @@ pub fn list_studio_modules(app: AppHandle) -> Result<Vec<StudioModule>, String> 
             "Siteye özel hata logu görüntüleme", String::new()),
         mod_entry("database", "Database Inspector", "site", php && wpcli && db, true,
             "Veritabanı tabloları ve kolon şeması (salt-okunur)", String::new()),
+        mod_entry("local_diagnostics", "Local Health Diagnostics", "site", php && wpcli && db, true,
+            "WordPress, PHP, veritabanı ve eklenti durumunun yerel kontrolü", String::new()),
         mod_entry("ssl", "Local HTTPS / SSL", "network", false, false,
             "Özel domain için güvenilir geliştirme sertifikası", String::new()),
         mod_entry("domains", "Custom Domains", "network", false, false,
@@ -336,6 +338,63 @@ pub async fn inspect_site_database_table(
         let rows = parsed.as_array().ok_or("Kolon yanıtı beklenen diziyi içermiyor")?;
         if rows.len() > 500 { return Err("Kolon sayısı güvenlik sınırını aştı".into()); }
         Ok(rows.clone())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteDiagnostics {
+    wordpress_version: String,
+    site_url: String,
+    expected_url: String,
+    php_version: String,
+    php_mysqli: bool,
+    plugin_count: usize,
+    theme_count: usize,
+    table_count: usize,
+    checks_passed: bool,
+    warnings: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn diagnose_site_locally(app: AppHandle, id: String)
+    -> Result<SiteDiagnostics, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let _lock = state.operations.lock().map_err(|e| e.to_string())?;
+        super::ensure_database(&app, &state)?;
+        let (site, public) = validated_site(&app, &id)?;
+        let path = format!("--path={}", public.display());
+        let common = ["--skip-plugins", "--skip-themes", "--skip-packages", "--quiet"];
+        let read = |args: &[&str]| -> Result<String, String> {
+            let mut params: Vec<String> = args.iter().map(|v| v.to_string()).collect();
+            params.extend(common.iter().map(|v| v.to_string()));
+            params.push(path.clone());
+            super::wp(&app, &params, None).map(|v| v.trim().to_string())
+        };
+        let version = read(&["core", "version"])?;
+        let home = read(&["option", "get", "home"])?;
+        let actual = home.trim_end_matches('/').to_string();
+        let expected = super::site_url(site.port);
+        let plugin_json = read(&["plugin", "list", "--format=json"])?;
+        let theme_json = read(&["theme", "list", "--format=json"])?;
+        let plugins = parse_extensions(&plugin_json)?;
+        let themes = parse_extensions(&theme_json)?;
+        let tables = database_tables_for_site(&app, &public)?;
+        let dependencies = super::check_dependencies(app.clone());
+        let php = dependencies.iter().find(|item| item.name == "PHP");
+        let mysqli = dependencies.iter().any(|item| item.name == "PHP mysqli" && item.installed);
+        let mut warnings = Vec::new();
+        if actual != expected { warnings.push("WordPress home adresi yerel site adresiyle eşleşmiyor".into()); }
+        if !mysqli { warnings.push("PHP mysqli uzantısı hazır değil".into()); }
+        if tables.is_empty() { warnings.push("WordPress veritabanında tablo görünmüyor".into()); }
+        if version.is_empty() { warnings.push("WordPress sürümü doğrulanamadı".into()); }
+        Ok(SiteDiagnostics {
+            wordpress_version: version, site_url: actual, expected_url: expected,
+            php_version: php.map(|item| item.version.clone()).unwrap_or_default(),
+            php_mysqli: mysqli, plugin_count: plugins.len(), theme_count: themes.len(),
+            table_count: tables.len(), checks_passed: warnings.is_empty(), warnings,
+        })
     }).await.map_err(|e| e.to_string())?
 }
 
