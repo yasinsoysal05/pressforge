@@ -2,9 +2,12 @@ name: WordPress installer integration checks (Ubuntu)
 
 on:
   pull_request:
-    branches: [main]
-  push:
-    branches: [feat/portable-runtime-validation]
+    branches: [main, feat/portable-runtime-validation]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
