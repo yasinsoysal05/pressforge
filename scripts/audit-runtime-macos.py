@@ -12,7 +12,7 @@ import re
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parents[1] / "src-tauri/resources/runtime"
+ROOT = Path(os.environ.get("PRESSFORGE_RUNTIME_DIR") or (Path(__file__).resolve().parents[1] / "src-tauri/resources/runtime")).resolve()
 MIN_TARGET = (13, 0, 0)
 
 
