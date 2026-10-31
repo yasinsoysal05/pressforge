@@ -40,6 +40,19 @@ def brew_prefix(formula):
         die(f'{formula} Homebrew paketi bulunamadı: {ex}')
 
 
+def runtime_prefix(env_var, formula):
+    # A release build must be able to stage runtimes built from source on
+    # Ventura without relying on an unsupported newer Homebrew bottle.
+    override = os.environ.get(env_var, '').strip()
+    if override:
+        prefix = Path(override).expanduser().resolve(strict=True)
+        if not prefix.is_dir():
+            die(f'{env_var} bir dizin olmalı: {prefix}')
+        print(f'[RUNTIME] {env_var}: {prefix}')
+        return prefix
+    return brew_prefix(formula)
+
+
 def macho(file):
     if file.is_symlink() or not file.is_file():
         return False
@@ -162,9 +175,12 @@ def stage_phar():
 def main():
     if sys.platform!='darwin' or os.uname().machine!='x86_64':
         die('Bu hazırlama betiği Intel x86_64 macOS üzerinde çalıştırılmalıdır.')
-    if shutil.which('brew') is None: die('macOS build ortamında Homebrew gerekli')
-    php=brew_prefix(os.environ.get('PRESSFORGE_PHP_FORMULA','php@8.3'))
-    maria=brew_prefix(os.environ.get('PRESSFORGE_MARIADB_FORMULA','mariadb@11.4'))
+    if shutil.which('brew') is None and not (
+        os.environ.get('PRESSFORGE_PHP_PREFIX') and os.environ.get('PRESSFORGE_MARIADB_PREFIX')
+    ):
+        die('Homebrew yoksa PRESSFORGE_PHP_PREFIX ve PRESSFORGE_MARIADB_PREFIX gerekli')
+    php=runtime_prefix('PRESSFORGE_PHP_PREFIX', os.environ.get('PRESSFORGE_PHP_FORMULA','php@8.3'))
+    maria=runtime_prefix('PRESSFORGE_MARIADB_PREFIX', os.environ.get('PRESSFORGE_MARIADB_FORMULA','mariadb@11.4'))
     if RUNTIME.exists(): shutil.rmtree(RUNTIME)
     RUNTIME.mkdir(parents=True)
     PORTABLE_LIB.mkdir()
