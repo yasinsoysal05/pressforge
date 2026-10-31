@@ -37,12 +37,16 @@ python3 scripts/smoke-mariadb-macos.py
 python3 scripts/smoke-wordpress-macos.py
 npm ci --no-audit --no-fund
 export MACOSX_DEPLOYMENT_TARGET=13.0
-npm run tauri build -- --target x86_64-apple-darwin
 
-# Stage validation alone is insufficient: ensure the FINAL Tauri .app really
-# contains relocatable Intel PHP/MariaDB and the pinned WP-CLI PHAR.
+# Tauri removes bundle/macos/*.app when creating a DMG. Validate a standalone
+# .app first, BEFORE the subsequent DMG packaging pass removes it.
+npm run tauri build -- --target x86_64-apple-darwin --bundles app
 python3 scripts/check-native-macos-app.py
 python3 scripts/verify-app-bundle-macos.py
+
+# This is a second, incremental bundling pass; final integrity is inspected
+# inside the mounted disk image, not by looking for the deleted staging .app.
+npm run tauri build -- --target x86_64-apple-darwin --bundles dmg
 
 # Validate the actual DMG image, not only the pre-packaging .app.
 dmg_dir="src-tauri/target/x86_64-apple-darwin/release/bundle/dmg"
