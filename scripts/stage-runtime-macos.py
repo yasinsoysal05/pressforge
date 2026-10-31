@@ -134,7 +134,13 @@ def copy_and_fix_symlinks(source, dest):
                 link.unlink()
                 link.symlink_to(os.path.relpath(replacement, link.parent))
             else:
-                # External symlinks are not allowed in a distributable bundle.
+                # Homebrew ships PHP's optional PECL development directory as a
+                # machine-local symlink. It is not part of WordPress core runtime.
+                if dest.name == 'php' and link.relative_to(dest).as_posix() == 'pecl':
+                    print(f'[PHP] PECL geliştirme symlink kaldırıldı: {link} -> {target}')
+                    link.unlink()
+                    continue
+                # All other external symlinks remain a hard packaging failure.
                 die(f'Paket dışında kalan mutlak sembolik bağ: {link} -> {target}')
 
 
