@@ -85,8 +85,13 @@ export function ModuleCenter({modules, refresh}: {
   </section>;
 }
 
-export function SiteToolkit({site, close}:{site:ToolkitSite;close:()=>void}) {
-  const [tab,setTab]=useState<'plugin'|'theme'|'database'|'snapshot'|'maintenance'>('plugin');
+export function SiteToolkit({site, close, initialTab='plugin'}:{
+  site:ToolkitSite;close:()=>void;initialTab?:'plugin'|'theme'|'database'|'snapshot'|'maintenance';
+}) {
+  const [tab,setTab]=useState<'plugin'|'theme'|'database'|'snapshot'|'maintenance'>(initialTab);
+  const [listPage,setListPage]=useState(0);
+  const [tablePage,setTablePage]=useState(0);
+  const [columnPage,setColumnPage]=useState(0);
   const [extensions,setExtensions]=useState<ExtensionInfo[]>([]);
   const [snapshots,setSnapshots]=useState<SnapshotInfo[]>([]);
   const [tables,setTables]=useState<string[]>([]);
@@ -94,6 +99,16 @@ export function SiteToolkit({site, close}:{site:ToolkitSite;close:()=>void}) {
   const [columns,setColumns]=useState<Record<string,unknown>[]>([]);
   const [busy,setBusy]=useState('');
   const [message,setMessage]=useState<{ok:boolean;value:string}|null>(null);
+  const limit=5;
+  function pager(total:number,index:number,change:(n:number)=>void){
+    const pages=Math.max(1,Math.ceil(total/limit));
+    if(pages===1)return null;
+    return <div className="pf-toolkit-pager">
+      <button type="button" disabled={index<=0||!!busy} onClick={()=>change(index-1)}>Önceki</button>
+      <span>{index+1} / {pages}</span>
+      <button type="button" disabled={index>=pages-1||!!busy} onClick={()=>change(index+1)}>Sonraki</button>
+    </div>;
+  }
 
   const fetchExtensions=useCallback(async(kind:'plugin'|'theme')=>{
     setBusy('list');
@@ -110,6 +125,8 @@ export function SiteToolkit({site, close}:{site:ToolkitSite;close:()=>void}) {
   const fetchDatabase=useCallback(async()=>{
     setBusy('db');
     setSelectedTable('');
+    setTablePage(0);
+    setColumnPage(0);
     setColumns([]);
     try {
       setTables(await invoke<string[]>('list_site_database_tables',{id:site.id}));
@@ -121,12 +138,14 @@ export function SiteToolkit({site, close}:{site:ToolkitSite;close:()=>void}) {
     setBusy('schema');
     setSelectedTable(table);
     setColumns([]);
+    setColumnPage(0);
     try {
       setColumns(await invoke<Record<string,unknown>[]>('inspect_site_database_table',{id:site.id,table}));
       setMessage(null);
     } catch(e) {setMessage({ok:false,value:String(e)});}
     finally {setBusy('');}
   },[site.id]);
+  useEffect(()=>setListPage(0),[tab]);
   useEffect(()=>{
     if(tab==='plugin'||tab==='theme') void fetchExtensions(tab);
     if(tab==='snapshot') void fetchSnapshots();
@@ -173,19 +192,20 @@ export function SiteToolkit({site, close}:{site:ToolkitSite;close:()=>void}) {
         {([['plugin','Eklentiler',Package],['theme','Temalar',Layers3],
            ['database','Veritabanı',Database],['snapshot','Snapshot',FileArchive],['maintenance','Bakım',Wrench]] as const)
           .map(([key,label,Icon])=><button key={key} role="tab" aria-selected={tab===key}
-            className={tab===key?'active':''} disabled={!!busy} onClick={()=>setTab(key)}>
+            className={tab===key?'active':''} disabled={!!busy} onClick={()=>{setTab(key);setListPage(0);setTablePage(0);setColumnPage(0);}}>
             <Icon size={16}/>{label}</button>)}
       </div>
       <div className="pf-toolkit-content">
         {['list','db','schema'].includes(busy)?<div className="pf-toolkit-loading"><Loader2 className="spin"/> Yükleniyor…</div>
         : tab==='plugin'||tab==='theme' ? <>
           <p className="pf-toolkit-description">WordPress eklenti ve temaları WP-CLI ile yönetilir. Sadece etkinleştirme ve devre dışı bırakma komutları kullanılabilir.</p>
-          {extensions.length?<div className="pf-extension-list">{extensions.map(ext=><div className="pf-extension" key={ext.name}>
+          {extensions.length?<div className="pf-extension-list">{extensions.slice(listPage*limit,(listPage+1)*limit).map(ext=><div className="pf-extension" key={ext.name}>
             <div><strong>{ext.name}</strong><span>v{ext.version||'—'} · {ext.status}</span></div>
             <button className="outline-btn" disabled={!!busy} onClick={()=>manage(tab,ext.name,
               ext.status==='active'?'deactivate':'activate')}>
               {ext.status==='active'?'Devre dışı':'Etkinleştir'}</button>
           </div>)}</div>:<div className="pf-toolkit-empty">Henüz kayıt yok.</div>}
+          {pager(extensions.length,listPage,setListPage)}
         </>:tab==='database'?<>
           <p className="pf-toolkit-description">
             WordPress veritabanındaki tabloları ve kolonlarını salt-okunur görüntüleyin.
@@ -197,20 +217,22 @@ export function SiteToolkit({site, close}:{site:ToolkitSite;close:()=>void}) {
           <div className="pf-db-inspector">
             <div className="pf-db-tables">
               <strong>{tables.length} tablo</strong>
-              {tables.map(table=><button key={table} type="button"
+              {tables.slice(tablePage*limit,(tablePage+1)*limit).map(table=><button key={table} type="button"
                 className={selectedTable===table?'selected':''} disabled={!!busy}
                 onClick={()=>void inspectTable(table)}>{table}</button>)}
               {!tables.length&&<small>Bu site için tablo bulunamadı.</small>}
+              {pager(tables.length,tablePage,setTablePage)}
             </div>
             <div className="pf-db-schema">
               <strong>{selectedTable||'Kolon şeması'}</strong>
               {columns.length?<div className="pf-db-columns">
-                {columns.map((col,i)=><div key={i} className="pf-db-column">
+                {columns.slice(columnPage*limit,(columnPage+1)*limit).map((col,i)=><div key={i} className="pf-db-column">
                   <code>{String(col.Field??col.field??'—')}</code>
                   <small>{String(col.Type??col.type??'')}</small>
                   <small>{String(col.Key??col.key??'')}</small>
                 </div>)}
               </div>:<p>Şemasını incelemek için soldan bir tablo seçin.</p>}
+              {pager(columns.length,columnPage,setColumnPage)}
             </div>
           </div>
         </>:tab==='snapshot'?<>
@@ -225,10 +247,11 @@ export function SiteToolkit({site, close}:{site:ToolkitSite;close:()=>void}) {
               .catch(e=>setMessage({ok:false,value:String(e)}))}>
             <Archive size={16}/> Snapshot klasörünü Finder'da aç
           </button>
-          <div className="pf-snapshots">{snapshots.length?snapshots.map(s=><div className="pf-snapshot" key={s.id}>
+          <div className="pf-snapshots">{snapshots.length?snapshots.slice(listPage*limit,(listPage+1)*limit).map(s=><div className="pf-snapshot" key={s.id}>
             <Archive size={18}/><div><strong>{new Date(s.createdAt*1000).toLocaleString('tr-TR')}</strong>
             <small>{s.id.slice(0,8)} · {(s.sizeBytes/1048576).toFixed(1)} MB · SQL dahil</small></div>
             <CheckCircle2 size={18}/></div>):<p>Henüz snapshot yok.</p>}</div>
+          {pager(snapshots.length,listPage,setListPage)}
         </>:<>
           <p className="pf-toolkit-description">Keyfî terminal komutları çalıştırılmaz; yalnızca üç izinli bakım işlemi desteklenir.</p>
           <div className="pf-maintenance">
