@@ -99,7 +99,7 @@ function EmbeddedLogs({site}:{site:SiteRecord}){
     setLoading(true);setError('');
     try {
       const raw=await invoke<string>('read_log',{id:site.id});
-      setLines(raw.split('\\n'));
+      setLines(raw.split('\n'));
       setPage(0);
     }catch(e){setError(String(e));}
     finally{setLoading(false);}
