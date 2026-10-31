@@ -122,14 +122,28 @@ fn bundled_binary(app: &AppHandle, names: &[&str]) -> Option<PathBuf> {
 }
 
 fn app_binary(app: &AppHandle, names: &[&str]) -> Result<PathBuf, String> {
-    bundled_binary(app, names).or_else(|| find_binary(names))
+    if bundle_runtime(app).is_some() {
+        // Never fall back to a host database/PHP binary if a runtime is bundled.
+        return bundled_binary(app, names).ok_or_else(|| {
+            format!("Paketlenmiş çalışma ortamında komut eksik: {}", names.join(" / "))
+        });
+    }
+    find_binary(names)
         .ok_or_else(|| format!("Gerekli komut bulunamadı: {}", names.join(" / ")))
 }
 
 fn configure_runtime(command: &mut Command, app: &AppHandle) {
     if let Some(runtime) = bundle_runtime(app) {
-        // Dynamic libraries are relocated at build time, not via insecure DYLD overrides.
-        command.env("PATH", format!("{}:{}", runtime.join("php/bin").display(), runtime_path()));
+        // Do not depend on Homebrew/MacPorts binaries installed on the user's Mac.
+        // Dynamic libraries must be relocated at build time, not via DYLD overrides.
+        command.env(
+            "PATH",
+            format!(
+                "{}:{}:/usr/bin:/bin:/usr/sbin:/sbin",
+                runtime.join("mariadb/bin").display(),
+                runtime.join("php/bin").display()
+            ),
+        );
         command.env("PHPRC", runtime.join("php/etc"));
         command.env("PHP_INI_SCAN_DIR", runtime.join("php/etc/conf.d"));
     } else {
