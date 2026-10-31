@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import urllib.error
 import urllib.request
 
 REPO = Path(__file__).resolve().parents[1]
@@ -52,6 +53,9 @@ def lockfile() -> dict:
             fail(f"Invalid archive filename: {key}")
         if not item["url"].endswith("/" + item["filename"]):
             fail(f"Archive URL/filename mismatch: {key}")
+        for alternate in item.get("fallback_urls", []):
+            if not alternate.startswith("https://") or not alternate.endswith("/" + item["filename"]):
+                fail(f"Untrusted fallback archive URL format: {key}")
     return obj
 
 
@@ -98,18 +102,28 @@ def download(source: dict, dest: Path) -> Path:
         return hasher.hexdigest() == sha
     if not valid(output):
         # Download to a temporary file, never treat a partial artifact as complete.
+        # The fallback is only for network availability; every mirror must match
+        # the same hard-coded SHA-256 from the reviewed lockfile.
         temp = output.with_name(output.name + ".partial")
-        temp.unlink(missing_ok=True)
-        req = urllib.request.Request(source["url"], headers={"User-Agent": "PressForge-source-builder/0.3"})
-        print(f"[FETCH] {source['url']}", flush=True)
-        try:
-            with urllib.request.urlopen(req, timeout=120) as response, temp.open("wb") as out:
-                shutil.copyfileobj(response, out)
-            if not valid(temp):
-                fail(f"Source SHA256 mismatch for {source['filename']}")
-            temp.rename(output)
-        finally:
+        failures = []
+        for url in [source["url"]] + source.get("fallback_urls", []):
             temp.unlink(missing_ok=True)
+            req = urllib.request.Request(url, headers={"User-Agent": "PressForge-source-builder/0.3"})
+            print(f"[FETCH] {url}", flush=True)
+            try:
+                with urllib.request.urlopen(req, timeout=120) as response, temp.open("wb") as out:
+                    shutil.copyfileobj(response, out)
+                if not valid(temp):
+                    fail(f"Source SHA256 mismatch for {source['filename']} from {url}")
+                temp.rename(output)
+                break
+            except (OSError, urllib.error.URLError) as exc:
+                failures.append(f"{url}: {exc}")
+                print(f"[NETWORK] Mirror unavailable: {exc}", flush=True)
+            finally:
+                temp.unlink(missing_ok=True)
+        if not valid(output):
+            fail("No verified source archive could be downloaded:\\n" + "\\n".join(failures))
     print(f"[OK] Verified SHA256 {sha}: {output}", flush=True)
     return output
 
