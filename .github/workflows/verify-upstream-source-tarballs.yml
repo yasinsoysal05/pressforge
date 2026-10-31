@@ -27,6 +27,20 @@ jobs:
           python-version: '3.12'
       - name: Verify locked archive contents (no compilation)
         run: python3 scripts/build-runtime-from-source.py --download-only
+      - name: Inspect archive link types before safe extraction
+        run: |
+          python3 - <<'PY'
+          import tarfile
+          from pathlib import Path
+          for path in sorted(Path('.pressforge-build/ventura/downloads').glob('*')):
+              with tarfile.open(path, 'r:*') as archive:
+                  members = archive.getmembers()
+                  symlinks = [m.name for m in members if m.issym()]
+                  hardlinks = [m.name for m in members if m.islnk()]
+                  print(f'{path.name}: total={len(members)}, symlinks={len(symlinks)}, hardlinks={len(hardlinks)}')
+                  print('Example symlinks:', symlinks[:8])
+                  print('Example hardlinks:', hardlinks[:8])
+          PY
       - name: Confirm no installation was performed
         run: |
           test -f .pressforge-build/ventura/downloads/php-8.3.35.tar.xz
