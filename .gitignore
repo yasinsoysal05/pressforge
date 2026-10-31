@@ -1,0 +1,13 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+
+# Mac runtime binaries generated only inside macOS build runners.
+src-tauri/resources/runtime/*
+!src-tauri/resources/runtime/README.txt
