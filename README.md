@@ -65,6 +65,7 @@ GitHub Actions sekmesinden **Build PressForge Intel DMG (experimental)** iş ak�
 Yerel Intel Mac üzerinde:
 
 ```bash
+# Önce docs/DMG-PAKETLEME.md belgesini okuyun.
 python3 scripts/stage-runtime-macos.py
 bash scripts/build-intel-dmg.sh
 ```

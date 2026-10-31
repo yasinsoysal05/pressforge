@@ -1,0 +1,36 @@
+name: Build PressForge Intel DMG (experimental)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  intel-dmg:
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+      - name: Install build-time PHP/MariaDB
+        run: |
+          brew update
+          brew install php@8.3 mariadb@11.4
+      - name: Stage relocatable Intel macOS runtime
+        run: python3 scripts/stage-runtime-macos.py
+      - name: Build DMG (fail closed if runtime missing)
+        run: bash scripts/build-intel-dmg.sh
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PressForge-Intel-macOS13-experimental
+          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 14

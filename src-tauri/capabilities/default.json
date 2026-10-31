@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "PressForge main window: core IPC only",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

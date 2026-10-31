@@ -1,0 +1,32 @@
+name: Bug report
+about: Hata bildir
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Sorun
+      description: Gizli bilgiler, parola veya gerçek müşteri verisi paylaşmayın.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Yeniden üretim adımları
+      placeholder: "1. Uygulamayı başlat..."
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS sürümü / mimari
+      placeholder: "13.7.8, Intel x86_64"
+  - type: input
+    id: version
+    attributes:
+      label: PressForge sürümü
+      placeholder: "0.2.0"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Kişisel bilgiler temizlenmiş loglar

@@ -1,0 +1,32 @@
+name: Source checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  source-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Version consistency
+        run: python3 scripts/check-version.py
+      - name: Project structure checks
+        run: python3 scripts/verify-project.py
+      - name: PHP router syntax
+        run: php -l src-tauri/src/router.php
+      - name: Frontend TypeScript and Vite build
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
