@@ -53,12 +53,15 @@ jobs:
           php /tmp/pressforge-wp-cli.phar core download --path="$tmp" --locale=en_US
           printf '%s\n' 'PressForge_ci_Only_2026' | php /tmp/pressforge-wp-cli.phar config create \
             --path="$tmp" --dbname=pf_ci_wordpress --dbuser=pf_ci_user \
-            --dbhost=localhost --prompt=dbpass --skip-check
+            --dbhost=localhost --prompt=dbpass --skip-check --quiet > "$tmp/private-config.log" 2>&1
           printf '%s\n' 'Local_test_admin_password_2026' | php /tmp/pressforge-wp-cli.phar core install \
             --path="$tmp" --url=http://127.0.0.1:18117 \
             '--title=PressForge Installation Smoke' --admin_user=pf_test \
-            --admin_email=pf@example.invalid --skip-email --prompt=admin_password
-          test "$(php /tmp/pressforge-wp-cli.phar --path="$tmp" option get siteurl)" = 'http://127.0.0.1:18117'
+            --admin_email=pf@example.invalid --skip-email --prompt=admin_password --quiet > "$tmp/private-install.log" 2>&1
+          installed_url="$(php /tmp/pressforge-wp-cli.phar --path="$tmp" option get siteurl)"
+          installed_url="$(printf '%s' "$installed_url" | sed 's:/*$::')"
+          echo "[CHECK] Installed site URL: $installed_url"
+          test "$installed_url" = 'http://127.0.0.1:18117'
           php -S 127.0.0.1:18117 -t "$tmp" src-tauri/src/router.php >"$tmp/php.log" 2>&1 &
           server_pid="$!"
           for attempt in $(seq 1 30); do
