@@ -364,6 +364,45 @@ fn copy_regular_tree(from: &Path, to: &Path, level: usize) -> Result<u64, String
     Ok(bytes)
 }
 
+fn checked_snapshot_id(value: &str) -> Result<(), String> {
+    if value.len() != 32 || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("Geçersiz snapshot kimliği".into());
+    }
+    Ok(())
+}
+
+fn verified_snapshot_root(root: &Path, snapshot_id: &str, site_id: &str)
+    -> Result<(PathBuf, SiteSnapshot), String> {
+    checked_snapshot_id(snapshot_id)?;
+    let directory = root.join(snapshot_id);
+    if directory.is_symlink() || !directory.is_dir() {
+        return Err("Snapshot dizini eksik veya sembolik bağlantı içeriyor".into());
+    }
+    let manifest = directory.join("snapshot.json");
+    let sql = directory.join("database.sql");
+    let files = directory.join("files");
+    for path in [&manifest, &sql, &files, &files.join("wp-config.php")] {
+        let meta = fs::symlink_metadata(path)
+            .map_err(|_| "Snapshot bütünlüğü doğrulanamadı".to_string())?;
+        if meta.file_type().is_symlink() {
+            return Err("Snapshot içerisinde sembolik bağlantı bulunuyor".into());
+        }
+    }
+    if !files.is_dir() || !manifest.is_file() || !sql.is_file() {
+        return Err("Snapshot dosyaları eksik".into());
+    }
+    if fs::metadata(&sql).map_err(|e| e.to_string())?.len() == 0 {
+        return Err("Snapshot SQL yedeği boş".into());
+    }
+    let record: SiteSnapshot = serde_json::from_slice(
+        &fs::read(&manifest).map_err(|e| e.to_string())?
+    ).map_err(|_| "Snapshot manifest dosyası bozuk".to_string())?;
+    if record.id != snapshot_id || record.site_id != site_id || !record.database_included {
+        return Err("Snapshot istenen siteye ait değil veya SQL yedeği içermiyor".into());
+    }
+    Ok((directory, record))
+}
+
 fn snapshots_root(app: &AppHandle, site: &str) -> Result<PathBuf, String> {
     Ok(super::data_dir(app)?.join("snapshots").join(site))
 }
@@ -414,6 +453,121 @@ pub async fn create_site_snapshot(app: AppHandle, id: String) -> Result<SiteSnap
         })();
         if outcome.is_err() { let _ = fs::remove_dir_all(&pending); }
         outcome
+    }).await.map_err(|e| e.to_string())?
+}
+
+/// Restore an existing snapshot to its ORIGINAL site only. Requires a stopped
+/// PHP process. A fresh database dump and original public directory are retained
+/// until the replacement files and database have been verified. On failure both
+/// are restored; if rollback fails, recovery assets remain on disk.
+#[tauri::command]
+pub async fn restore_site_snapshot(
+    app: AppHandle, id: String, snapshot_id: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        enabled_module(&app, "snapshots")?;
+        let state = app.state::<AppState>();
+        let _lock = state.operations.lock().map_err(|e| e.to_string())?;
+        let (site, public) = validated_site(&app, &id)?;
+        let processes = state.processes.lock().map_err(|e| e.to_string())?;
+        if processes.contains_key(&id) {
+            return Err("Geri yükleme öncesi WordPress sitesini durdurun".into());
+        }
+        drop(processes);
+        let snapshots = snapshots_root(&app, &id)?;
+        if snapshots.is_symlink() {
+            return Err("Snapshot kök dizini sembolik bağlantı olamaz".into());
+        }
+        let (source, _) = verified_snapshot_root(&snapshots, &snapshot_id, &id)?;
+        super::ensure_database(&app, &state)?;
+        let parent = public.parent().ok_or("Site klasörü bulunamadı")?;
+        if parent.is_symlink() || public.is_symlink() {
+            return Err("Site dizini sembolik bağlantı olamaz".into());
+        }
+        let nonce = Uuid::new_v4().simple().to_string();
+        let stage = parent.join(format!(".restore-{nonce}.stage"));
+        let original = parent.join(format!(".restore-{nonce}.original"));
+        let backup_sql = parent.join(format!(".restore-{nonce}.backup.sql"));
+
+        // Nothing changes in the live site until all snapshot files have been
+        // staged and we have a non-empty dump of the CURRENT database.
+        let preflight = (|| -> Result<(), String> {
+            copy_regular_tree(&source.join("files"), &stage, 0)?;
+            if !stage.join("wp-config.php").is_file() {
+                return Err("Snapshot WordPress yapılandırması eksik".into());
+            }
+            super::wp(&app, &[
+                "db".into(), "export".into(), backup_sql.display().to_string(),
+                "--quiet".into(), format!("--path={}", public.display()),
+            ], None)?;
+            if !backup_sql.is_file()
+                || fs::metadata(&backup_sql).map_err(|e| e.to_string())?.len() == 0 {
+                return Err("Geri alma SQL yedeği oluşturulamadı".into());
+            }
+            Ok(())
+        })();
+        if let Err(err) = preflight {
+            let _ = fs::remove_dir_all(&stage);
+            let _ = fs::remove_file(&backup_sql);
+            return Err(format!("Geri yükleme ön kontrolü başarısız: {err}"));
+        }
+
+        // Both directories live in the same site root, so rename stays on a
+        // single filesystem. SQL and file rollback are attempted on all errors.
+        if let Err(e) = fs::rename(&public, &original) {
+            let _ = fs::remove_dir_all(&stage);
+            let _ = fs::remove_file(&backup_sql);
+            return Err(format!("Mevcut WordPress dosyaları korunamadı: {e}"));
+        }
+        let install = (|| -> Result<(), String> {
+            fs::rename(&stage, &public).map_err(|e| e.to_string())?;
+            super::wp(&app, &[
+                "db".into(), "import".into(),
+                source.join("database.sql").display().to_string(),
+                "--quiet".into(), format!("--path={}", public.display()),
+            ], None)?;
+            let home = super::wp(&app, &[
+                "option".into(), "get".into(), "home".into(),
+                "--skip-plugins".into(), "--skip-themes".into(),
+                "--quiet".into(), format!("--path={}", public.display()),
+            ], None)?;
+            if home.trim().trim_end_matches('/') != super::site_url(site.port) {
+                return Err("Snapshot site adresi mevcut yerel adresle uyuşmuyor".into());
+            }
+            Ok(())
+        })();
+        if let Err(err) = install {
+            let damaged = parent.join(format!(".restore-{nonce}.failed"));
+            let _ = if public.exists() {
+                fs::rename(&public, &damaged)
+            } else { Ok(()) };
+            let files_recovered = fs::rename(&original, &public);
+            let database_recovered = if files_recovered.is_ok() {
+                super::wp(&app, &[
+                    "db".into(), "import".into(), backup_sql.display().to_string(),
+                    "--quiet".into(), format!("--path={}", public.display()),
+                ], None).map(|_| ())
+            } else {
+                Err("Orijinal site dosyaları yerine taşınamadı".into())
+            };
+            if files_recovered.is_ok() && database_recovered.is_ok() {
+                let _ = fs::remove_dir_all(&stage);
+                let _ = fs::remove_dir_all(&damaged);
+                let _ = fs::remove_file(&backup_sql);
+                return Err(format!("Geri yükleme başarısız; orijinal site ve SQL geri alındı: {err}"));
+            }
+            // Preserve original and backup SQL for manual recovery when any
+            // rollback step fails. Never discard recovery files on uncertainty.
+            return Err(format!(
+                "KRİTİK: Geri yükleme başarısız: {err}. Geri alma tamamlanamadı. Kurtarma dosyaları silinmedi: {}. Ayrıntı: {:?} / {:?}",
+                parent.display(), files_recovered.err(), database_recovered.err()
+            ));
+        }
+        // Any cleanup failure must not falsely report data loss: the restored
+        // WordPress files and SQL are already committed at this point.
+        let _ = fs::remove_dir_all(&original);
+        let _ = fs::remove_file(&backup_sql);
+        Ok("WordPress dosyaları ve SQL veritabanı snapshot üzerinden geri yüklendi".into())
     }).await.map_err(|e| e.to_string())?
 }
 
@@ -470,6 +624,29 @@ mod tests {
         for unsafe_input in ["wp_posts; DROP TABLE users", "wp_a/../../", "wp_foo\u{0}bar"] {
             assert!(parse_database_tables(unsafe_input).is_err());
         }
+    }
+    #[test]
+    fn validate_snapshot_id_and_manifest_before_restore() {
+        assert!(checked_snapshot_id(&"a".repeat(32)).is_ok());
+        for bad in ["", "../etc/passwd", "a/".repeat(16).as_str(), &"z".repeat(32)] {
+            assert!(checked_snapshot_id(bad).is_err());
+        }
+        let root = tempfile::tempdir().unwrap();
+        let site = "b".repeat(32);
+        let ident = "a".repeat(32);
+        let dir = root.path().join(&ident);
+        fs::create_dir_all(dir.join("files")).unwrap();
+        fs::write(dir.join("files/wp-config.php"), "valid wp config").unwrap();
+        fs::write(dir.join("database.sql"), "-- sample SQL").unwrap();
+        let record = SiteSnapshot {
+            id: ident.clone(), site_id: site.clone(), site_title: "Test".into(),
+            created_at: 123, size_bytes: 24, database_included: true,
+        };
+        fs::write(dir.join("snapshot.json"), serde_json::to_vec(&record).unwrap()).unwrap();
+        assert!(verified_snapshot_root(root.path(), &ident, &site).is_ok());
+        assert!(verified_snapshot_root(root.path(), &ident, &"c".repeat(32)).is_err());
+        fs::write(dir.join("database.sql"), "").unwrap();
+        assert!(verified_snapshot_root(root.path(), &ident, &site).is_err());
     }
     #[test]
     fn restricts_wp_extension_slugs() {
