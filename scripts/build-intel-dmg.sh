@@ -37,12 +37,17 @@ python3 scripts/smoke-mariadb-macos.py
 python3 scripts/smoke-wordpress-macos.py
 npm ci --no-audit --no-fund
 export MACOSX_DEPLOYMENT_TARGET=13.0
-npm run tauri build -- --target x86_64-apple-darwin
 
-# Tauri may remove the intermediate bundle/macos/*.app after DMG creation.
-# Validate the *actual* disk image instead; verify-final-dmg-macos.sh mounts it
-# read-only and runs verify-app-bundle-macos.py against the shipped application.
-# The source runtime audits above already validate the staging directory.
+# Tauri removes bundle/macos/*.app when creating a DMG. Validate a standalone
+# .app first, BEFORE the subsequent DMG packaging pass removes it.
+npm run tauri build -- --target x86_64-apple-darwin --bundles app
+python3 scripts/check-native-macos-app.py
+python3 scripts/verify-app-bundle-macos.py
+
+# This is a second, incremental bundling pass; final integrity is inspected
+# inside the mounted disk image, not by looking for the deleted staging .app.
+npm run tauri build -- --target x86_64-apple-darwin --bundles dmg
+
 # Validate the actual DMG image, not only the pre-packaging .app.
 dmg_dir="src-tauri/target/x86_64-apple-darwin/release/bundle/dmg"
 shopt -s nullglob
