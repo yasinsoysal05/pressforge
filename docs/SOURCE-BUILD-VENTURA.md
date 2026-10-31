@@ -78,6 +78,10 @@ Never connect a personal Mac with documents, secrets or SSH keys as an unrestric
 
 Tracking: https://github.com/yasinsoysal05/pressforge/issues/8
 
+## Strict Ventura-only DMG gate
+
+Even a development DMG is now rejected unless `sw_vers` reports **Intel macOS 13.x**. The DMG builder runs `smoke-wordpress-macos.py` itself (not only in the higher-level pipeline), so bypassing the orchestrator cannot accidentally skip the disposable real WordPress install, home-page and login HTTP checks. The separate native CI compilation on macOS 15 produces only a non-distributable `.app` without bundled PHP/MariaDB.
+
 ## Final Tauri app bundle gate
 
 `scripts/build-intel-dmg.sh` now checks the generated `PressForge.app` **after Tauri packaging**. The gate rejects the build if:
