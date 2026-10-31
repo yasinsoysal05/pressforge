@@ -8,6 +8,7 @@ import {
   RefreshCw, Search, Server, ShieldCheck, Square, TerminalSquare, X,
 } from 'lucide-react';
 import './styles.css';
+import { ModuleCenter, SiteToolkit, type ModuleInfo } from './StudioModules';
 
 type Site = {
   id: string;
@@ -39,6 +40,8 @@ function IconMark({ size = 40 }: { size?: number }) {
 function App() {
   const [sites, setSites] = useState<Site[]>([]);
   const [deps, setDeps] = useState<Dependency[]>([]);
+  const [modules, setModules] = useState<ModuleInfo[]>([]);
+  const [toolSite, setToolSite] = useState<Site | null>(null);
   const [runtimeMode, setRuntimeMode] = useState<'bundled' | 'development' | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState('');
@@ -51,13 +54,15 @@ function App() {
   const [menu, setMenu] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [sitesResult, depResult, modeResult] = await Promise.all([
+    const [sitesResult, depResult, modeResult, moduleResult] = await Promise.all([
       invoke<Site[]>('list_sites'), invoke<Dependency[]>('check_dependencies'),
       invoke<'bundled' | 'development'>('runtime_mode'),
+      invoke<ModuleInfo[]>('list_studio_modules'),
     ]);
     setSites(sitesResult);
     setDeps(depResult);
     setRuntimeMode(modeResult);
+    setModules(moduleResult);
   }, []);
 
   useEffect(() => {
@@ -121,6 +126,7 @@ function App() {
       <nav className="side-links" aria-label="Ana menü">
         <button className="side-link selected"><Monitor size={18} /> Sitelerim <span className="nav-count">{sites.length}</span></button>
         <button className="side-link" onClick={() => document.getElementById('environment')?.scrollIntoView({ behavior: 'smooth' })}><Server size={18} /> Yerel ortam <ChevronRight size={16} className="side-chevron" /></button>
+        <button className="side-link" onClick={() => document.getElementById('studio-modules')?.scrollIntoView({ behavior: 'smooth' })}><Layers3 size={18} /> Modül Merkezi <ChevronRight size={16} className="side-chevron" /></button>
       </nav>
       <div className="sidebar-heading tool-heading">HIZLI ERİŞİM</div>
       <div className="side-links">
@@ -140,7 +146,7 @@ function App() {
 
         <div className="section-heading"><div><h2>Projelerim <span>{sites.length}</span></h2><p>Tüm WordPress çalışma alanların</p></div><div className="actions"><div className="search-box"><Search size={17}/><input aria-label="Projelerde ara" placeholder="Projelerde ara..." value={search} onChange={e => setSearch(e.target.value)}/></div><button title="Yenile" aria-label="Listeyi yenile" className="icon-button" onClick={() => runAction('refresh', refresh)} disabled={!!working}><RefreshCw size={18} className={working === 'refresh' ? 'spin' : ''} /></button></div></div>
         {loading ? <div className="empty-state"><Loader2 className="spin"/><p>Çalışma alanı yükleniyor…</p></div> : visibleSites.length === 0 ? <div className="empty-state"><div className="empty-art"><Layers3 size={33}/></div><h3>{search ? 'Aramanızla eşleşen proje yok' : 'İlk projenizi oluşturun'}</h3><p>{search ? 'Farklı bir arama terimi deneyin.' : 'Yeni bir WordPress sitesi oluşturduğunuzda burada görünecek.'}</p>{!search && <button onClick={() => setShowForm(true)} className="outline-btn"><Plus size={16}/> Site oluştur</button>}</div> : <div className="sites-grid">{visibleSites.map(site => <article className="site-card" key={site.id}>
-          <div className="site-card-header"><div className="wp-symbol">W</div><div className="site-title"><strong>{site.title}</strong><span>{site.url}</span></div><div className="relative"><button aria-label="Proje seçenekleri" className="bare-button" onClick={() => setMenu(menu === site.id ? null : site.id)}><MoreHorizontal size={20}/></button>{menu === site.id && <div className="dropdown"><button onClick={() => showLogs(site)}><FileText size={15}/> PHP loglarını aç</button><button onClick={() => openSite(site,'folder')}><FolderOpen size={15}/> Proje klasörü</button><button className="danger-text" onClick={() => archiveSite(site)}><Archive size={15}/> Arşivle</button></div>}</div></div>
+          <div className="site-card-header"><div className="wp-symbol">W</div><div className="site-title"><strong>{site.title}</strong><span>{site.url}</span></div><div className="relative"><button aria-label="Proje seçenekleri" className="bare-button" onClick={() => setMenu(menu === site.id ? null : site.id)}><MoreHorizontal size={20}/></button>{menu === site.id && <div className="dropdown"><button onClick={() => {setMenu(null); setToolSite(site);}}><Layers3 size={15}/> Site araçları</button><button onClick={() => showLogs(site)}><FileText size={15}/> PHP loglarını aç</button><button onClick={() => openSite(site,'folder')}><FolderOpen size={15}/> Proje klasörü</button><button className="danger-text" onClick={() => archiveSite(site)}><Archive size={15}/> Arşivle</button></div>}</div></div>
           <div className="site-tags"><span className={`state-pill ${site.running ? 'online' : 'offline'}`}><span className="green-dot"/>{site.running ? 'Çalışıyor' : 'Durduruldu'}</span><span className="subtle-chip">WordPress</span><span className="subtle-chip">{site.locale === 'tr_TR' ? 'Türkçe' : 'English'}</span></div>
           <div className="site-info"><div><Globe2 size={15}/><span>Adres</span><strong>{site.url.replace('http://','')}</strong></div><div><Database size={15}/><span>Veritabanı</span><strong title={site.dbName}>{site.dbName}</strong></div><div><Clock3 size={15}/><span>Oluşturuldu</span><strong>{new Date(Number(site.createdAt) * 1000).toLocaleDateString('tr-TR')}</strong></div></div>
           <div className="site-footer"><button className="site-open" disabled={!site.running} onClick={() => openSite(site,'website')}><ExternalLink size={15}/> Siteyi aç</button><button className="site-open" disabled={!site.running} onClick={() => openSite(site,'admin')}>WP Admin</button><button className={`site-power ${site.running ? 'stop' : 'start'}`} disabled={!!working} title={site.running ? 'Durdur' : 'Başlat'} aria-label={site.running ? 'Siteyi durdur' : 'Siteyi başlat'} onClick={() => runAction(site.id, () => invoke(site.running ? 'stop_site' : 'start_site', { id: site.id }))}>{working === site.id ? <Loader2 size={16} className="spin"/> : site.running ? <Square size={15}/> : <Play size={15}/>}</button></div>
@@ -149,6 +155,7 @@ function App() {
         <section className="environment" id="environment"><div className="env-head"><div><div className="eyebrow">SYSTEM HEALTH</div><h2>Yerel ortam</h2><p>{bundledRuntime
             ? (allReady ? 'PHP, WP-CLI ve MariaDB uygulama paketinden çalıştırılmaya hazır.' : 'Paketli çalışma ortamı eksik veya hatalı. Lütfen dağıtım paketinin bütünlüğünü kontrol edin.')
             : 'Geliştirici modu: gerekli bağımlılıkların sisteminizde çalışması gerekir.'}</p></div><button className="outline-btn" disabled={!!working} onClick={() => runAction('refresh', refresh)}><RefreshCw size={15}/> Tekrar kontrol et</button></div><div className="dependency-grid">{deps.map(dep => <div className="dependency" key={dep.name}><div className="dependency-symbol">{dep.name.includes('PHP') ? <Code2 size={18}/> : dep.name.includes('WordPress') || dep.name.includes('WP-CLI') ? <TerminalSquare size={18}/> : <Database size={18}/>}</div><div className="dependency-detail"><strong>{dep.name}</strong><span title={dep.version}>{dep.version || 'Yüklü değil'}</span></div><div className={`dependency-state ${dep.installed ? 'ok' : 'missing'}`}>{dep.installed ? <Check size={16}/> : <X size={16}/>}</div></div>)}</div>{deps.length > 0 && !allReady && <div className="install-warning"><LockKeyhole size={17}/><span>{bundledRuntime ? 'Paketlenmiş motor eksik veya çalışmıyor. Sistem PHP/MySQL kurulumu bu hatayı düzeltmez.' : <>Eksik bağımlılıklar var. Geliştirici kurulum talimatları için <code>README.md</code> dosyasını inceleyin.</>}</span></div>}</section>
+        <ModuleCenter modules={modules} refresh={() => { void refresh().catch(notifyError); }} />
         <footer className="footer">PressForge 0.2.0 <span>•</span> Tamamen yerel WordPress geliştirme <span>•</span> Geliştirme sunucusunu internete açmayın.</footer>
       </section>
     </main>
@@ -159,6 +166,7 @@ function App() {
       <form onSubmit={createSite}><div className="form-body"><label>Site adı<input autoFocus required maxLength={90} placeholder="Örn. Magna Demo" value={form.title} onChange={e => setForm({...form, title:e.target.value})}/></label><div className="form-row"><label>Yönetici kullanıcı adı<input required placeholder="admin" value={form.adminUser} onChange={e => setForm({...form, adminUser:e.target.value})}/></label><label>WordPress dili<select value={form.locale} onChange={e => setForm({...form, locale:e.target.value as CreateSite['locale']})}><option value="tr_TR">Türkçe (tr_TR)</option><option value="en_US">English (en_US)</option></select></label></div><div className="form-row"><label>Yönetici e-posta<input required type="email" placeholder="admin@example.test" value={form.adminEmail} onChange={e => setForm({...form, adminEmail:e.target.value})}/></label><label>WordPress şifresi<input required minLength={12} type="password" autoComplete="new-password" placeholder="En az 12 karakter" value={form.adminPassword} onChange={e => setForm({...form, adminPassword:e.target.value})}/></label></div>{!bundledRuntime && <><div className="form-divider"><Database size={17}/> Yerel MariaDB bağlantısı</div><div className="form-row"><label>MariaDB yönetici kullanıcı adı<input required value={form.dbAdminUser} onChange={e => setForm({...form, dbAdminUser:e.target.value})}/></label><label>MariaDB yönetici şifresi <span className="optional">(yoksa boş)</span><input type="password" autoComplete="off" placeholder="Yerel veritabanı şifresi" value={form.dbAdminPassword} onChange={e => setForm({...form, dbAdminPassword:e.target.value})}/></label></div></>}<div className="info-line"><ShieldCheck size={16}/> Şifreler uygulama kayıtlarında saklanmaz. WordPress bağlantı şifresi kendi wp-config.php dosyasında tutulur.</div></div><div className="modal-actions"><button type="button" className="outline-btn" onClick={() => setShowForm(false)} disabled={!!working}>Vazgeç</button><button type="submit" className="primary-btn" disabled={!allReady || !!working}>{working === 'create' ? <><Loader2 size={17} className="spin"/> WordPress kuruluyor…</> : <><Plus size={17}/> Siteyi oluştur</>}</button></div></form>
     </div></div>}
 
+    {toolSite && <SiteToolkit site={toolSite} close={() => setToolSite(null)} />}
     {logSite && <div className="modal-backdrop"><div className="modal log-modal" role="dialog" aria-modal="true" aria-labelledby="log-title"><div className="modal-header"><div><div className="eyebrow">PHP DEVELOPMENT LOG</div><h2 id="log-title">{logSite.title} — PHP logları</h2></div><button className="bare-button" onClick={() => setLogSite(null)} aria-label="Kapat"><X size={20}/></button></div><pre className="log-output">{logs}</pre><div className="modal-actions"><button className="outline-btn" onClick={async () => setLogs(await invoke<string>('read_log', { id: logSite.id }))}><RefreshCw size={15}/> Yenile</button><button className="primary-btn" onClick={() => setLogSite(null)}>Kapat</button></div></div></div>}
   </div>;
 }
