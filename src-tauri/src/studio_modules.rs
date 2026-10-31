@@ -441,6 +441,19 @@ fn keep_current_db_connection(current: &Path, staged: &Path) -> Result<(), Strin
     Ok(())
 }
 
+fn recover_original_site_files(
+    public: &Path, original: &Path, damaged: &Path,
+) -> Result<(), String> {
+    // A failed replacement must never overwrite the only remaining copy of
+    // the original site. Move damaged files aside first, then restore originals.
+    if public.exists() {
+        fs::rename(public, damaged)
+            .map_err(|e| format!("Bozuk site dosyaları ayrılamadı: {e}"))?;
+    }
+    fs::rename(original, public)
+        .map_err(|e| format!("Orijinal site dosyaları geri taşınamadı: {e}"))
+}
+
 fn checked_snapshot_id(value: &str) -> Result<(), String> {
     if value.len() != 32 || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err("Geçersiz snapshot kimliği".into());
@@ -615,10 +628,7 @@ pub async fn restore_site_snapshot(
         })();
         if let Err(err) = install {
             let damaged = parent.join(format!(".restore-{nonce}.failed"));
-            let _ = if public.exists() {
-                fs::rename(&public, &damaged)
-            } else { Ok(()) };
-            let files_recovered = fs::rename(&original, &public);
+            let files_recovered = recover_original_site_files(&public, &original, &damaged);
             let database_recovered = if files_recovered.is_ok() {
                 super::wp(&app, &[
                     "db".into(), "import".into(), backup_sql.display().to_string(),
@@ -701,6 +711,21 @@ mod tests {
         for unsafe_input in ["wp_posts; DROP TABLE users", "wp_a/../../", "wp_foo\u{0}bar"] {
             assert!(parse_database_tables(unsafe_input).is_err());
         }
+    }
+    #[test]
+    fn failed_restore_moves_damaged_site_away_before_recovering_original() {
+        let root = tempfile::tempdir().unwrap();
+        let current = root.path().join("public");
+        let original = root.path().join(".restore-original");
+        let damaged = root.path().join(".restore-failed");
+        fs::create_dir(&current).unwrap();
+        fs::create_dir(&original).unwrap();
+        fs::write(current.join("version.txt"), "damaged").unwrap();
+        fs::write(original.join("version.txt"), "original").unwrap();
+        recover_original_site_files(&current, &original, &damaged).unwrap();
+        assert_eq!(fs::read_to_string(current.join("version.txt")).unwrap(), "original");
+        assert_eq!(fs::read_to_string(damaged.join("version.txt")).unwrap(), "damaged");
+        assert!(!original.exists());
     }
     #[test]
     fn restore_retains_current_wordpress_db_connection() {
