@@ -504,7 +504,7 @@ fn create_site_impl(app: &AppHandle, state: &AppState, new: NewSite) -> Result<S
         id, title: new.title.trim().to_string(), port,
         admin_user: new.admin_user.clone(),
         locale: new.locale.clone(),
-        db_name: name,
+        db_name: name.clone(),
         directory: public.display().to_string(),
         created_at: format!("{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()),
     };
@@ -675,7 +675,7 @@ pub fn run() {
                     let _ = child.kill();
                     let _ = child.wait();
                 }
-            }
+            };
         }
     });
 }
