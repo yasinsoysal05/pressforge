@@ -18,6 +18,27 @@ python3 scripts/build-runtime-from-source.py --verify-lock
 
 This checks the pinned manifest; it does not download, compile, or modify system services.
 
+## One-command development pipeline
+
+PR #9 now builds on top of PR #7 (standalone runtime staging). On a **real Intel macOS Ventura 13.x** development machine, the new end-to-end developer entrypoint is:
+
+```bash
+git clone https://github.com/yasinsoysal05/pressforge.git
+cd pressforge
+git switch feat/ventura-source-build
+
+# Read-only prerequisite diagnostics, without installing or changing services:
+bash scripts/ventura-pipeline.sh --doctor
+
+# After prerequisites are present, source build + runtime audit + WordPress
+# disposable installation test + unsigned developer DMG:
+bash scripts/ventura-pipeline.sh --build --jobs 2
+```
+
+This pipeline deliberately fails if preflight requirements, source download SHA-256, native dependencies, MariaDB startup, WordPress installation, or Tauri build fail. It does not invoke `sudo`, modify host database services, publish a GitHub Release, or upload files. Source build output and staged binary dependencies remain in gitignored directories.
+
+**Do not treat any DMG as distributable until a clean Intel Ventura machine test, code signing, notarization and third-party license obligations are verified.** Currently neither the real-device build nor these acceptance tests have passed.
+
 ## Compile on a real Intel macOS Ventura 13.x build host
 
 Start with this **read-only** prerequisite check (does not install or alter services):
