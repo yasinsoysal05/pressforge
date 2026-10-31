@@ -85,8 +85,9 @@ export function ModuleCenter({modules, refresh}: {
   </section>;
 }
 
-export function SiteToolkit({site, close, initialTab='plugin'}:{
-  site:ToolkitSite;close:()=>void;initialTab?:'plugin'|'theme'|'database'|'snapshot'|'maintenance';
+export function SiteToolkit({site, close, initialTab='plugin', embedded=false}:{
+  site:ToolkitSite;close:()=>void;embedded?:boolean;
+  initialTab?:'plugin'|'theme'|'database'|'snapshot'|'maintenance';
 }) {
   const [tab,setTab]=useState<'plugin'|'theme'|'database'|'snapshot'|'maintenance'>(initialTab);
   const [listPage,setListPage]=useState(0);
@@ -180,21 +181,23 @@ export function SiteToolkit({site, close, initialTab='plugin'}:{
     }catch(e){setMessage({ok:false,value:String(e)});}
     finally{setBusy('');}
   }
-  return <div className="modal-backdrop" role="presentation">
-    <div className="modal pf-toolkit" role="dialog" aria-modal="true" aria-labelledby="pf-toolkit-title">
+  return <div className={embedded?'pf-toolkit-inline':'modal-backdrop'} role={embedded?undefined:'presentation'}>
+    <div className={'modal pf-toolkit'+(embedded?' pf-embedded':'')} role={embedded?'region':'dialog'}
+      aria-modal={embedded?undefined:true} aria-labelledby="pf-toolkit-title">
       <div className="modal-header">
         <div><div className="eyebrow">SITE TOOLKIT / WP-CLI</div>
           <h2 id="pf-toolkit-title">{site.title} — Araçlar</h2>
           <p>İşlemler yalnızca bu site üzerinde, izinli komutlarla yürütülür.</p></div>
-        <button className="bare-button" aria-label="Kapat" onClick={close} disabled={!!busy}><X size={20}/></button>
+        {!embedded&&<button className="bare-button" aria-label="Kapat" onClick={close} disabled={!!busy}><X size={20}/></button>}
       </div>
-      <div className="pf-toolkit-tabs" role="tablist" aria-label="Site araçları">
+      {(!embedded||initialTab==='plugin'||initialTab==='theme')&&<div className="pf-toolkit-tabs" role="tablist" aria-label="Site araçları">
         {([['plugin','Eklentiler',Package],['theme','Temalar',Layers3],
            ['database','Veritabanı',Database],['snapshot','Snapshot',FileArchive],['maintenance','Bakım',Wrench]] as const)
+          .filter(([key])=>!embedded||key==='plugin'||key==='theme')
           .map(([key,label,Icon])=><button key={key} role="tab" aria-selected={tab===key}
             className={tab===key?'active':''} disabled={!!busy} onClick={()=>{setTab(key);setListPage(0);setTablePage(0);setColumnPage(0);}}>
             <Icon size={16}/>{label}</button>)}
-      </div>
+      </div>}
       <div className="pf-toolkit-content">
         {['list','db','schema'].includes(busy)?<div className="pf-toolkit-loading"><Loader2 className="spin"/> Yükleniyor…</div>
         : tab==='plugin'||tab==='theme' ? <>
@@ -263,7 +266,7 @@ export function SiteToolkit({site, close, initialTab='plugin'}:{
         {message&&<div className={'pf-toolkit-notice '+(message.ok?'success':'error')}>
           {message.ok?<CheckCircle2 size={17}/>:<ShieldAlert size={17}/>}<span>{message.value}</span></div>}
       </div>
-      <div className="modal-actions"><button className="outline-btn" disabled={!!busy} onClick={close}>Kapat</button></div>
+      {!embedded&&<div className="modal-actions"><button className="outline-btn" disabled={!!busy} onClick={close}>Kapat</button></div>}
     </div>
   </div>;
 }
