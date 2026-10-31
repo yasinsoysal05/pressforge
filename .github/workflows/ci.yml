@@ -31,7 +31,7 @@ jobs:
         run: php -l src-tauri/src/router.php
       - name: Frontend TypeScript and Vite build
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npm run build
 
   intel-native-build:
@@ -49,9 +49,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
       - name: Show native toolchain
         run: |
           uname -a
@@ -60,10 +57,15 @@ jobs:
           rustc -vV
           clang --version
       - name: Install frontend dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
+      - name: Require committed dependency lockfiles
+        run: |
+          test -s package-lock.json
+          test -s src-tauri/Cargo.lock
+          cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps --format-version 1 >/dev/null
       - name: Compile Rust/Tauri and create non-distributable .app
         run: npm run tauri build -- --target x86_64-apple-darwin --bundles app
       - name: Inspect Intel architecture and minimum macOS version
         run: python3 scripts/check-native-macos-app.py
       - name: Run Rust unit tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --target x86_64-apple-darwin --lib
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --target x86_64-apple-darwin --lib

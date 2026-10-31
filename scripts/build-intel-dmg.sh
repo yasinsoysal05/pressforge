@@ -22,7 +22,7 @@ fi
 
 # Avoid a misleading DMG with an incomplete runtime.
 python3 scripts/verify-bundled-runtime.py
-npm install --no-audit --no-fund
+npm ci --no-audit --no-fund
 export MACOSX_DEPLOYMENT_TARGET=13.0
 npm run tauri build -- --target x86_64-apple-darwin
 

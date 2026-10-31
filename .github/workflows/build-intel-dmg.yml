@@ -23,6 +23,11 @@ jobs:
         run: |
           brew update
           brew install php@8.3 mariadb@11.4
+      - name: Require reproducible dependency locks
+        run: |
+          test -s package-lock.json
+          test -s src-tauri/Cargo.lock
+          cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps --format-version 1 >/dev/null
       - name: Stage relocatable Intel macOS runtime
         run: python3 scripts/stage-runtime-macos.py
       - name: Build DMG (fail closed if runtime missing)
