@@ -843,6 +843,7 @@ pub fn run() {
             studio_modules::open_site_snapshots_folder,
             studio_modules::list_site_database_tables,
             studio_modules::inspect_site_database_table,
+            studio_modules::diagnose_site_locally,
         ])
         .build(tauri::generate_context!())
         .expect("PressForge başlatılamadı");
