@@ -1,0 +1,44 @@
+name: Bootstrap dependency lockfiles (temporary)
+on:
+  push:
+    branches: [chore/reproducible-build-lockfiles]
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    if: github.repository == 'yasinsoysal05/pressforge'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate npm v10 lockfile (no install scripts)
+        run: |
+          npm --version
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          test -s package-lock.json
+      - name: Generate Cargo lockfile
+        run: |
+          cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+          test -s src-tauri/Cargo.lock
+      - name: Verify lockfile resolution and frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          cargo metadata --manifest-path src-tauri/Cargo.toml --locked --no-deps --format-version 1 >/dev/null
+      - name: Commit only lockfiles to feature branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- package-lock.json src-tauri/Cargo.lock
+          if ! git diff --cached --quiet; then
+            git commit -m "build: commit npm and Cargo lockfiles"
+            git push origin HEAD:chore/reproducible-build-lockfiles
+          fi
