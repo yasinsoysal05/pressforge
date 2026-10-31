@@ -28,6 +28,10 @@ jobs:
           bash -n scripts/ventura-pipeline.sh
           bash -n scripts/verify-runtime-on-ventura.sh
           bash -n scripts/build-intel-dmg.sh
+      - name: Inspect post-build app bundle verifier syntax
+        run: |
+          python3 -m py_compile scripts/verify-app-bundle-macos.py
+          python3 -m py_compile scripts/audit-runtime-macos.py
       - name: Source SHA-256 lock schema
         run: python3 scripts/build-runtime-from-source.py --verify-lock
       - name: Source archive extraction security regression tests
