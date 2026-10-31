@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: pressforge-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   portable-runtime:
     name: Staged PHP / WP-CLI / MariaDB on Intel macOS 15
