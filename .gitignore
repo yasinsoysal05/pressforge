@@ -11,3 +11,6 @@ src-tauri/gen/
 # Mac runtime binaries generated only inside macOS build runners.
 src-tauri/resources/runtime/*
 !src-tauri/resources/runtime/README.txt
+
+# Locally compiled source runtimes and 200MB+ upstream tarballs
+.pressforge-build/
