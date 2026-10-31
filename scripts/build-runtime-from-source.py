@@ -69,7 +69,7 @@ def preflight() -> dict[str, str]:
     ver = re.search(r"(\d+)\.(\d+)", bison_version)
     if not ver or int(ver.group(1)) < 3:
         fail(f"GNU Bison 3+ required (macOS system bison may be too old): {bison_version}")
-    for dep in ("openssl", "libxml-2.0", "libcurl", "libzip", "oniguruma"):
+    for dep in ("openssl", "libxml-2.0", "libcurl", "libzip", "oniguruma", "icu-uc", "icu-i18n"):
         if subprocess.run(["pkg-config", "--exists", dep]).returncode:
             fail(f"Missing pkg-config dependency {dep}; build it for Ventura x86_64 and set PKG_CONFIG_PATH")
     sdk = subprocess.check_output(["xcrun", "--sdk", "macosx", "--show-sdk-path"], text=True).strip()
