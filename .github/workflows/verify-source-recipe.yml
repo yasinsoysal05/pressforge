@@ -22,8 +22,12 @@ jobs:
           python-version: '3.12'
       - name: Python source syntax
         run: python3 -m py_compile scripts/build-runtime-from-source.py
-      - name: Bash build-host doctor syntax
-        run: bash -n scripts/doctor-ventura-build-host.sh
+      - name: Bash build-host doctor and orchestration syntax
+        run: |
+          bash -n scripts/doctor-ventura-build-host.sh
+          bash -n scripts/ventura-pipeline.sh
+          bash -n scripts/verify-runtime-on-ventura.sh
+          bash -n scripts/build-intel-dmg.sh
       - name: Source SHA-256 lock schema
         run: python3 scripts/build-runtime-from-source.py --verify-lock
       - name: Source archive extraction security regression tests
