@@ -28,6 +28,7 @@ jobs:
           bash -n scripts/ventura-pipeline.sh
           bash -n scripts/verify-runtime-on-ventura.sh
           bash -n scripts/build-intel-dmg.sh
+          bash -n scripts/verify-final-dmg-macos.sh
       - name: Inspect post-build app bundle verifier syntax
         run: |
           python3 -m py_compile scripts/verify-app-bundle-macos.py
